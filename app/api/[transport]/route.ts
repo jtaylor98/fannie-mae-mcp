@@ -7,15 +7,20 @@ import {
   API_CATALOG,
 } from "@/lib/fanniemae";
 
+// This route calls Fannie Mae's API per-request and must never be statically prerendered.
 export const dynamic = "force-dynamic";
 
 const handler = createMcpHandler(async (server) => {
   server.tool(
     "list_apis",
-    "List Fannie Mae's public APIs available through this connector, with a short description of each. Only Loan Limits is currently wired up to live data; the rest are catalog entries for browsing.",
+    "List Fannie Mae's public APIs available through this connector, with a " +
+      "short description of each. Only Loan Limits is currently wired up to " +
+      "live data; the rest are catalog entries for browsing what's available.",
     {},
     async () => {
-      return { content: [{ type: "text", text: JSON.stringify(API_CATALOG, null, 2) }] };
+      return {
+        content: [{ type: "text", text: JSON.stringify(API_CATALOG, null, 2) }],
+      };
     }
   );
 
@@ -31,8 +36,11 @@ const handler = createMcpHandler(async (server) => {
 
   server.tool(
     "get_historical_loan_limits",
-    "Get historical loan limits for all US counties/territories for a given calendar year (2009-2019).",
-    { year: z.number().describe("Calendar year, e.g. 2015") },
+    "Get historical loan limits for all US counties/territories for a given " +
+      "calendar year. Historical years available: 2009-2019.",
+    {
+      year: z.number().describe("Calendar year, e.g. 2015"),
+    },
     async ({ year }) => {
       const data = await getHistoricalLoanLimits(year);
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
@@ -51,6 +59,13 @@ const handler = createMcpHandler(async (server) => {
       return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
     }
   );
+},
+{
+  // Optional server options (capabilities, etc.) -- none needed here.
+},
+{
+  basePath: "/api",
+  verboseLogs: true,
 });
 
 export { handler as GET, handler as POST, handler as DELETE };
