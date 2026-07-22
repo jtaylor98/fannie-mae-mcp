@@ -1,3 +1,4 @@
+const TOKEN_URL = () => requireEnv("FANNIE_TOKEN_URL");
 const API_BASE = "https://api.fanniemae.com";
 
 function requireEnv(name: string): string {
@@ -6,9 +7,6 @@ function requireEnv(name: string): string {
   return value;
 }
 
-// In-memory token cache. Best-effort across warm serverless invocations --
-// not persistent across cold starts, but cheap enough to just re-fetch when
-// missing, since the token endpoint is fast and has no documented rate limit.
 let cachedToken: { token: string; expiresAt: number } | null = null;
 
 async function getAccessToken(): Promise<string> {
@@ -18,10 +16,9 @@ async function getAccessToken(): Promise<string> {
 
   const clientId = requireEnv("FANNIE_CLIENT_ID");
   const clientSecret = requireEnv("FANNIE_CLIENT_SECRET");
-  const tokenUrl = requireEnv("FANNIE_TOKEN_URL");
   const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
 
-  const res = await fetch(tokenUrl, {
+  const res = await fetch(TOKEN_URL(), {
     method: "POST",
     headers: {
       Authorization: `Basic ${basicAuth}`,
@@ -37,7 +34,6 @@ async function getAccessToken(): Promise<string> {
   const data = await res.json();
   cachedToken = {
     token: data.access_token,
-    // Refresh a minute early so we never hand out a token about to expire mid-call.
     expiresAt: Date.now() + data.expires_in * 1000 - 60_000,
   };
   return cachedToken.token;
@@ -59,8 +55,6 @@ async function fannieGet(path: string): Promise<any> {
   return res.json();
 }
 
-// --- Loan Limits API -----------------------------------------------------
-
 export async function getAllLoanLimits() {
   return fannieGet("/v1/loan-limits/all");
 }
@@ -73,16 +67,7 @@ export async function getLoanLimitsByCounty(state: string, county: string) {
   return fannieGet(`/v1/loan-limits/state/${state}/county/${county}`);
 }
 
-// --- Static catalog of all 16 public APIs, for browsing/drill-down -------
-
-export interface ApiCatalogEntry {
-  name: string;
-  tag: string;
-  description: string;
-  implemented?: boolean;
-}
-
-export const API_CATALOG: ApiCatalogEntry[] = [
+export const API_CATALOG = [
   { name: "Connecticut Avenue Securities API", tag: "Pricing & Execution", description: "Provides loan level data underlying Single-Family Connecticut Avenue Securities (CAS) deals." },
   { name: "Construction Spending API", tag: "Originating & Underwriting", description: "Monthly estimates of the total dollar value of construction work done in the U.S." },
   { name: "Credit Insurance Risk Transfer API", tag: "Pricing & Execution", description: "Provides loan level data underlying Single-Family Credit Insurance Risk Transfer (CIRT) deals." },
@@ -98,5 +83,5 @@ export const API_CATALOG: ApiCatalogEntry[] = [
   { name: "Pool Prefix API", tag: "Pricing & Execution", description: "Get pool prefix data by amortization type and/or property type and/or pool prefix." },
   { name: "Refinance Application-Level Index API", tag: "Servicing", description: "Refinance Application-Level Index data." },
   { name: "Re-Performing Loans API", tag: "Pricing & Execution", description: "Performance of Fannie Mae single-family mortgage loans that were permanently modified." },
-  { name: "Single-Family Loan Performance History API", tag: "Single Family", description: "Single-Family Loan Performance History." },
+  { name: "Single-Family Loan Performance History API", tag: "Single Family", description: "Single-Family Loan Performance History." }
 ];
