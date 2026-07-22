@@ -2,7 +2,8 @@
   --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --paper: #ffffff;
   --body: #1a1f29;
-  --accent: #1a1f29;
+  /* Fannie Mae brand blue -- used for headers, labels, and other accent text/borders. */
+  --accent: #05314d;
   --muted: #6b7280;
   --line: #e5e7eb;
   --slate: #d1d5db;
@@ -18,7 +19,9 @@
   :root {
     --paper: #14171c;
     --body: #e5e9ec;
-    --accent: #e5e9ec;
+    /* Lightened for contrast against a dark background -- the literal brand
+       navy would be nearly invisible on a dark paper color. */
+    --accent: #6fa8dc;
     --muted: #9ca3af;
     --line: #2a2e35;
     --slate: #3a3f47;
