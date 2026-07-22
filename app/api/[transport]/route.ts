@@ -1,11 +1,5 @@
 import { createMcpHandler } from "mcp-handler";
-import { z } from "zod";
-import {
-  getAllLoanLimits,
-  getHistoricalLoanLimits,
-  getLoanLimitsByCounty,
-  API_CATALOG,
-} from "@/lib/fanniemae";
+import { API_CATALOG } from "@/lib/fanniemae";
 import { registerWidgets } from "@/lib/widgets";
 
 export const dynamic = "force-dynamic";
@@ -14,46 +8,18 @@ const handler = createMcpHandler(
   async (server) => {
     server.tool(
       "list_apis",
-      "List Fannie Mae's public APIs available through this connector, with a short description of each. Only Loan Limits is currently wired up to live data; the rest are catalog entries for browsing.",
+      "List Fannie Mae's public APIs available through this connector, with a short description of each and which are live vs catalog-only.",
       {},
       async () => {
         return { content: [{ type: "text", text: JSON.stringify(API_CATALOG, null, 2) }] };
       }
     );
 
-    server.tool(
-      "get_all_loan_limits",
-      "Get loan limits for every US county, county equivalent, and territory in a single call.",
-      {},
-      async () => {
-        const data = await getAllLoanLimits();
-        return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-      }
-    );
-
-    server.tool(
-      "get_historical_loan_limits",
-      "Get historical loan limits for all US counties/territories for a given calendar year (2009-2019).",
-      { year: z.number().describe("Calendar year, e.g. 2015") },
-      async ({ year }) => {
-        const data = await getHistoricalLoanLimits(year);
-        return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-      }
-    );
-
-    server.tool(
-      "get_loan_limits_by_county",
-      "Get loan limits for one specific US state/territory and county.",
-      {
-        state: z.string().describe("State or territory code, e.g. 'CA'"),
-        county: z.string().describe("County name, e.g. 'Los Angeles'"),
-      },
-      async ({ state, county }) => {
-        const data = await getLoanLimitsByCounty(state, county);
-        return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
-      }
-    );
-
+    // All 14 implemented APIs (including what used to be Loan Limits'
+    // standalone tools) are now reached exclusively through
+    // fnma_show_api_detail's generic api_name + operation_id dispatch --
+    // see lib/widgets.ts. This keeps the tool list small and consistent
+    // rather than hand-writing a tool per operation per API.
     registerWidgets(server);
   },
   {},
