@@ -6,6 +6,7 @@ import {
   getLoanLimitsByCounty,
   API_CATALOG,
 } from "@/lib/fanniemae";
+import { registerWidgets } from "@/lib/widgets";
 
 export const dynamic = "force-dynamic";
 
@@ -52,6 +53,8 @@ const handler = createMcpHandler(
         return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
       }
     );
+
+    registerWidgets(server);
   },
   {},
   {
