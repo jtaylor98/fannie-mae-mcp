@@ -2,9 +2,8 @@
 <meta charset="utf-8" />
 <!--
   Fannie Mae API catalog -- overview widget. Cards for all 16 public APIs,
-  grouped by tag, with search filtering. Implemented APIs (currently just
-  Loan Limits) are clickable and drill into the detail widget; others show
-  as catalog-only, visually de-emphasized.
+  grouped by tag, with search filtering. Implemented APIs are clickable and
+  drill into the detail widget; others show as catalog-only.
 -->
 <style>
   /*__BRAND__*/
@@ -76,7 +75,7 @@ function render(){
       <div class="card ${a.implemented?'live':'static'}" data-name="${esc(a.name)}">
         <div class="name">${esc(a.name)}</div>
         <div class="desc">${esc(a.description)}</div>
-        ${a.implemented?'<span class="badge">● LIVE -- click to explore</span>':'<span class="badge static">Catalog only</span>'}
+        ${a.implemented?'<span class="badge">● LIVE</span>':'<span class="badge static">Catalog only</span>'}
       </div>`).join("");
     return `<div class="group">
       <div class="group-hd">${ICONS[g]||DEFAULT_ICON}<span class="group-lab">${esc(g)}</span><span class="group-count">(${groupApis.length})</span></div>
@@ -89,8 +88,7 @@ function render(){
       <div class="stats"><span><b>${apis.length}</b> total APIs</span><span><b>${liveCount}</b> live in this connector</span><span><b>${apis.length-liveCount}</b> catalog-only</span></div>
     </div>
     <div class="search"><input type="text" id="q" placeholder="Search APIs by name, category, or description…" value="${esc(query)}" /></div>
-    ${visible.length===0 ? '<div class="no-results">No APIs match your search.</div>' : sections}
-    <div class="foot">Click a LIVE card to explore that API's data</div>`;
+    ${visible.length===0 ? '<div class="no-results">No APIs match your search.</div>' : sections}`;
 
   root.querySelectorAll(".card.live").forEach(card=>{
     card.addEventListener("click", ()=>{
@@ -98,11 +96,6 @@ function render(){
     });
   });
 
-  // Re-query the input fresh from the DOM we just built -- do NOT reuse a
-  // reference captured before this render, since innerHTML replacement
-  // destroys the old node and creates a new one. Focusing a stale,
-  // detached node is a no-op, which was the bug: every keystroke rebuilt
-  // the DOM and then tried (silently, uselessly) to focus the old input.
   const searchInput = root.querySelector("#q");
   if(searchInput){
     searchInput.addEventListener("input", (e)=>{
