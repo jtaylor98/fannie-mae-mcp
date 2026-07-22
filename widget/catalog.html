@@ -33,7 +33,6 @@
   .desc{font-size:11px;color:var(--muted);line-height:1.4}
   .badge{display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:700;padding:2px 7px;border-radius:999px;background:var(--pass);color:var(--paper);margin-top:7px}
   .badge.static{background:transparent;color:var(--muted);border:1px solid var(--line);padding:2px 6px}
-  .hidden{display:none}
   .no-results{padding:20px 16px;color:var(--muted);text-align:center;font-size:12px}
   .foot{padding:10px 16px 14px;font-size:10px;color:var(--muted);border-top:1px solid var(--line);margin-top:8px}
 </style>
@@ -99,9 +98,22 @@ function render(){
     });
   });
 
+  // Re-query the input fresh from the DOM we just built -- do NOT reuse a
+  // reference captured before this render, since innerHTML replacement
+  // destroys the old node and creates a new one. Focusing a stale,
+  // detached node is a no-op, which was the bug: every keystroke rebuilt
+  // the DOM and then tried (silently, uselessly) to focus the old input.
   const searchInput = root.querySelector("#q");
   if(searchInput){
-    searchInput.addEventListener("input", (e)=>{ query = e.target.value; render(); searchInput.focus(); searchInput.setSelectionRange(query.length, query.length); });
+    searchInput.addEventListener("input", (e)=>{
+      query = e.target.value;
+      render();
+      const freshInput = document.getElementById("q");
+      if(freshInput){
+        freshInput.focus();
+        freshInput.setSelectionRange(query.length, query.length);
+      }
+    });
   }
 }
 
