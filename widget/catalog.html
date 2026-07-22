@@ -1,0 +1,72 @@
+<!doctype html>
+<meta charset="utf-8" />
+<!--
+  Fannie Mae API catalog -- overview widget. Cards for all 16 public APIs,
+  grouped by tag. Implemented APIs (currently just Loan Limits) are
+  clickable and drill into the detail widget; others show as catalog-only.
+-->
+<style>
+  /*__BRAND__*/
+  *{box-sizing:border-box} html,body{margin:0}
+  body{font-family:var(--font);color:var(--body);background:var(--paper);font-size:13px;color-scheme:light dark}
+  #root{max-width:900px;margin:0 auto}
+  .hd{padding:12px 16px 8px}
+  .hd h1{font-size:13px;font-weight:700;color:var(--accent);margin:0;text-transform:uppercase;letter-spacing:.04em}
+  .hd .sub{font-size:11px;color:var(--muted);margin-top:2px}
+  .group{padding:4px 16px}
+  .group-lab{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:10px 0 6px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px}
+  .card{border:1px solid var(--line);border-radius:6px;padding:10px 12px;background:var(--off)}
+  .card.live{border-left:3px solid var(--pass);cursor:pointer;background:var(--pass-bg)}
+  .card.live:hover{opacity:.85}
+  .name{font-weight:700;font-size:12px;margin-bottom:3px}
+  .desc{font-size:11px;color:var(--muted);line-height:1.4}
+  .badge{display:inline-block;font-size:9px;font-weight:700;padding:1px 6px;border-radius:999px;background:var(--pass);color:var(--paper);margin-top:6px}
+  .foot{padding:8px 16px 14px;font-size:10px;color:var(--muted);border-top:1px solid var(--line);margin-top:8px}
+</style>
+<div id="root"><div style="padding:26px 16px;color:var(--muted);text-align:center">Loading catalog…</div></div>
+<script type="module">
+/*__EXT_APPS_BUNDLE__*/
+const { App } = globalThis.ExtApps;
+const esc=(s)=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+
+let DATA=null, app=null;
+const ctx=()=>app?.getHostContext?.()||{};
+function ask(text){ try{ app.sendMessage({role:"user",content:[{type:"text",text}]}); }catch{} }
+
+function render(){
+  const root=document.getElementById("root");
+  const apis = DATA?.apis||[];
+  if(apis.length===0){ root.innerHTML='<div style="padding:26px 16px;color:var(--muted);text-align:center">No APIs found.</div>'; return; }
+
+  const groups = [...new Set(apis.map(a=>a.tag))];
+  const sections = groups.map(g=>{
+    const cards = apis.filter(a=>a.tag===g).map(a=>`
+      <div class="card ${a.implemented?'live':''}" data-name="${esc(a.name)}">
+        <div class="name">${esc(a.name)}</div>
+        <div class="desc">${esc(a.description)}</div>
+        ${a.implemented?'<span class="badge">LIVE -- click to explore</span>':''}
+      </div>`).join("");
+    return `<div class="group"><div class="group-lab">${esc(g)}</div><div class="grid">${cards}</div></div>`;
+  }).join("");
+
+  root.innerHTML = `<div class="hd"><h1>Fannie Mae Public APIs</h1><div class="sub">${apis.length} APIs · ${apis.filter(a=>a.implemented).length} live in this connector</div></div>
+    ${sections}
+    <div class="foot">Click a LIVE card to explore that API's data</div>`;
+
+  root.querySelectorAll(".card.live").forEach(card=>{
+    card.addEventListener("click", ()=>{
+      ask(`Show me the ${card.dataset.name} details and let me try it.`);
+    });
+  });
+}
+
+(async()=>{
+  app=new App({name:"FnmaCatalog",version:"1.0.0"},{availableDisplayModes:["inline"]},{autoResize:true});
+  const theme=()=>{try{document.documentElement.classList.toggle("dark",ctx().theme==="dark")}catch{}};
+  app.ontoolresult=(result)=>{ try{ DATA=result?.structuredContent ?? JSON.parse(result.content[0].text); }catch{ DATA=null; } theme(); render(); };
+  app.onhostcontextchanged=()=>{ theme(); render(); };
+  await app.connect();
+  theme(); render();
+})();
+</script>
