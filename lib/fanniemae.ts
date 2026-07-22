@@ -39,12 +39,18 @@ async function getAccessToken(): Promise<string> {
   return cachedToken.token;
 }
 
+// NOTE: Fannie Mae's public-API gateway does NOT use standard OAuth Bearer
+// auth for the resource calls themselves -- despite issuing a normal-looking
+// JWT, the actual data API expects that token in a custom
+// `x-public-access-token` header instead of `Authorization: Bearer`.
+// Confirmed via direct curl testing -- Authorization: Bearer consistently
+// returned 401 even with a valid, freshly-issued token; x-public-access-token
+// with the identical token succeeded.
 async function fannieGet(path: string): Promise<any> {
   const token = await getAccessToken();
   const res = await fetch(`${API_BASE}${path}`, {
     headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/json",
+      "x-public-access-token": token,
     },
   });
 
