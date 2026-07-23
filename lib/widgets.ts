@@ -39,7 +39,12 @@ export function registerWidgets(server: any) {
         "Pass api_name matching a name from fnma_show_catalog. To actually run " +
         "a live operation, also pass operation_id and whichever of the other " +
         "params that specific operation needs (see the operation's own params " +
-        "list from a prior fnma_show_api_detail call, or list_apis).",
+        "list from a prior fnma_show_api_detail call, or list_apis). " +
+        "Batch operations (getMultipleConstructionSpending, " +
+        "getMultiplePoolPrefixes) take a list encoded as a single string: " +
+        "pipe separates items, slash separates fields within an item, e.g. " +
+        "queryItems='Total | Total/Residential | Private/Nonresidential/Office'. " +
+        "Every operation is read-only, including the ones issued as POST.",
       inputSchema: {
         api_name: z.string().describe("Exact API name from the catalog, e.g. 'Loan Limits API'"),
         operation_id: z.string().optional().describe("Operation id to execute. Omit to just show the API's details without running anything."),
@@ -53,17 +58,30 @@ export function registerWidgets(server: any) {
         street: z.string().optional(),
         city: z.string().optional(),
         zip: z.string().optional(),
+        address: z.string().optional().describe("Full free-text address, for validateOpportunityZoneByAddressPost"),
         indicator: z.string().optional(),
         page: z.string().optional(),
         section: z.string().optional(),
         sector: z.string().optional(),
         subsector: z.string().optional(),
+        queryItems: z.string().optional().describe("Batch construction-spending paths: 'Total | Total/Residential | Private/Nonresidential/Office' (pipe = item, slash = section/sector/subsector)"),
+        businessLine: z.string().optional().describe("Pool prefix business line, e.g. 'Single-Family' or 'Multifamily'"),
+        amortizationType: z.string().optional().describe("Pool prefix amortization type, e.g. 'Fixed' or 'ARM'"),
+        prefix: z.string().optional().describe("Two-letter pool prefix, e.g. '2L'"),
+        keyword: z.string().optional().describe("Pool prefix description keyword, e.g. 'Reperforming'"),
+        prefixRequests: z.string().optional().describe("Batch pool-prefix requests: 'Single-Family/Fixed | Multifamily/ARM' (pipe = item, slash = businessLine/amortizationType)"),
+        aggregationColumns: z.string().optional().describe("HERA aggregation columns"),
+        groupByColumns: z.string().optional().describe("HERA group-by columns, comma-separated"),
+        whereClauseColumns: z.string().optional().describe("HERA where-clause columns"),
+        whereClauseValues: z.string().optional().describe("HERA where-clause values, pipe-separated, positionally matching whereClauseColumns"),
         id: z.string().optional(),
         areatype: z.string().optional(),
         ownershipstatus: z.string().optional(),
         housingcostratio: z.string().optional(),
         agegp: z.string().optional(),
         censusregion: z.string().optional(),
+        incomegp: z.string().optional(),
+        educationlvl: z.string().optional(),
         startDate: z.string().optional(),
         endDate: z.string().optional(),
       },
@@ -80,7 +98,7 @@ export function registerWidgets(server: any) {
 
       let lastResult: { operationId: string; data: any } | null = null;
       if (operation_id && entry.implemented) {
-        const data = await runOperation(operation_id, params as Record<string, string | number>);
+        const data = await runOperation(operation_id, params as Record<string, any>);
         lastResult = { operationId: operation_id, data };
       }
 
