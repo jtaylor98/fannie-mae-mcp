@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { getWorkflowRuns, detectAnomalies, listWorkflows, isScheduledWorkflow, summarizeRuns } from "./github";
+import { API_CATALOG, runOperation } from "./fanniemae";
 import { WIDGETS } from "../app/_widgets.js";
 
 const APP_MIME = "text/html;profile=mcp-app";
@@ -22,8 +22,8 @@ export function registerWidgets(server: any) {
     },
     async () => {
       return {
-        content: [{ type: "text", text: `Rendered the Fannie Mae API catalog (16 APIs). Don't restate the list.` }],
-        structuredContent: { apis: (await import("./fanniemae")).API_CATALOG },
+        content: [{ type: "text", text: `Rendered the Fannie Mae API catalog (${API_CATALOG.length} APIs). Don't restate the list.` }],
+        structuredContent: { apis: API_CATALOG },
         _meta: { ui: { resourceUri: widgetUri("catalog") } },
       };
     }
@@ -70,7 +70,6 @@ export function registerWidgets(server: any) {
       _meta: { ui: { resourceUri: widgetUri("api-detail") } },
     },
     async ({ api_name, operation_id, ...params }: { api_name: string; operation_id?: string; [key: string]: any }) => {
-      const { API_CATALOG, runOperation } = await import("./fanniemae");
       const entry = API_CATALOG.find((a) => a.name.toLowerCase() === api_name.toLowerCase());
       if (!entry) {
         return {
