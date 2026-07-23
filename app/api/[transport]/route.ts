@@ -39,7 +39,15 @@ const handler = createMcpHandler(
         page: z.string().optional(),
         section: z.string().optional(),
         sector: z.string().optional(),
+        subsector: z.string().optional(),
         id: z.string().optional(),
+        areatype: z.string().optional(),
+        ownershipstatus: z.string().optional(),
+        housingcostratio: z.string().optional(),
+        agegp: z.string().optional(),
+        censusregion: z.string().optional(),
+        startDate: z.string().optional(),
+        endDate: z.string().optional(),
       },
       async ({ api_name, operation_id, ...params }) => {
         const entry = API_CATALOG.find((a) => a.name.toLowerCase() === api_name.toLowerCase());
@@ -61,9 +69,6 @@ const handler = createMcpHandler(
       }
     );
 
-    // Widget tools (fnma_show_catalog, fnma_show_api_detail) cover the same
-    // 14 APIs visually. call_fnma_api above is the plain-text-only escape
-    // hatch for when a widget isn't wanted or can't render.
     registerWidgets(server);
   },
   {},
