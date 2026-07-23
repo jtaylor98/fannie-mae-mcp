@@ -1,0 +1,145 @@
+<!doctype html>
+<meta charset="utf-8" />
+<!--
+  Fannie Mae API catalog -- overview widget. Cards for all 16 public APIs,
+  grouped by tag, with search filtering.
+
+  Three card states:
+    live   (green)   -- implemented and reachable
+    down   (amber)   -- implemented but Fannie Mae's gateway rejects it;
+                        statusNote explains why. Still clickable.
+    static (neutral) -- catalog entry only, never wired up. Not an error,
+                        so it no longer borrows the amber warning color.
+-->
+<style>
+  /*__BRAND__*/
+  *{box-sizing:border-box} html,body{margin:0}
+  body{font-family:var(--font);color:var(--body);background:var(--paper);font-size:13px;color-scheme:light dark}
+  #root{max-width:920px;margin:0 auto}
+  .hd{padding:14px 16px 10px}
+  .hd h1{font-size:14px;font-weight:700;color:var(--accent);margin:0;text-transform:uppercase;letter-spacing:.04em}
+  .stats{display:flex;gap:14px;margin-top:6px;font-size:11px;color:var(--muted);flex-wrap:wrap}
+  .stats b{color:var(--body);font-weight:700}
+  .stats b.warn{color:var(--watch)}
+  .search{margin:8px 16px 4px}
+  .search input{width:100%;border:1px solid var(--slate);border-radius:6px;padding:7px 10px;font-size:12px;background:var(--paper);color:var(--body)}
+  .search input:focus{outline:2px solid var(--pass);outline-offset:-1px}
+  .group{padding:4px 16px}
+  .group-hd{display:flex;align-items:center;gap:6px;margin:12px 0 6px}
+  .group-hd svg{width:13px;height:13px;color:var(--muted);flex:0 0 auto}
+  .group-lab{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+  .group-count{font-size:10px;color:var(--muted)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px}
+  .card{border:1px solid var(--line);border-radius:7px;padding:11px 13px;background:var(--off);transition:box-shadow .12s,transform .12s}
+  .card.live{border-left:3px solid var(--pass);cursor:pointer;background:var(--pass-bg);box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  .card.live:hover{box-shadow:0 3px 10px rgba(0,0,0,.10);transform:translateY(-1px)}
+  .card.down{border-left:3px solid var(--watch);cursor:pointer;background:var(--watch-bg);box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  .card.down:hover{box-shadow:0 3px 10px rgba(0,0,0,.10);transform:translateY(-1px)}
+  .card.static{border-left:3px solid var(--slate);background:var(--off)}
+  .name{font-weight:700;font-size:12px;margin-bottom:3px}
+  .card.static .name{color:var(--body)}
+  .desc{font-size:11px;color:var(--muted);line-height:1.4}
+  .badge{display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:700;padding:2px 7px;border-radius:999px;background:var(--pass);color:var(--paper);margin-top:7px}
+  .badge.down{background:var(--watch);color:var(--paper)}
+  .badge.static{background:transparent;color:var(--muted);border:1px solid var(--slate)}
+  .why{font-size:9.5px;color:var(--watch);line-height:1.4;margin-top:6px}
+  .no-results{padding:20px 16px;color:var(--muted);text-align:center;font-size:12px}
+</style>
+<div id="root"><div style="padding:26px 16px;color:var(--muted);text-align:center">Loading catalog…</div></div>
+<script type="module">
+/*__EXT_APPS_BUNDLE__*/
+const { App } = globalThis.ExtApps;
+const esc=(s)=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+
+const ICONS = {
+  "Originating & Underwriting": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1m4 0h1m-6 4h1m4 0h1m-6 4h1m4 0h1"/></svg>',
+  "Pricing & Execution": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
+  "Servicing": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.9 4.9l2.9 2.9M16.2 16.2l2.9 2.9M2 12h4M18 12h4M4.9 19.1l2.9-2.9M16.2 7.8l2.9-2.9"/><circle cx="12" cy="12" r="3"/></svg>',
+  "Single Family": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8M5 10v10h14V10"/></svg>',
+};
+const DEFAULT_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg>';
+
+let DATA=null, app=null, query="";
+const ctx=()=>app?.getHostContext?.()||{};
+function ask(text){ try{ app.sendMessage({role:"user",content:[{type:"text",text}]}); }catch{} }
+
+const isDown = (a)=> !!a.implemented && a.status === "unreachable";
+
+function matches(api){
+  if(!query) return true;
+  const q = query.toLowerCase();
+  return api.name.toLowerCase().includes(q) || api.description.toLowerCase().includes(q) || api.tag.toLowerCase().includes(q);
+}
+
+function render(){
+  const root=document.getElementById("root");
+  const apis = DATA?.apis||[];
+  if(apis.length===0){ root.innerHTML='<div style="padding:26px 16px;color:var(--muted);text-align:center">No APIs found.</div>'; return; }
+
+  const downCount = apis.filter(isDown).length;
+  const liveCount = apis.filter(a=>a.implemented && !isDown(a)).length;
+  const visible = apis.filter(matches);
+  const groups = [...new Set(apis.map(a=>a.tag))];
+
+  const sections = groups.map(g=>{
+    const groupApis = visible.filter(a=>a.tag===g);
+    if(groupApis.length===0) return "";
+    const cards = groupApis.map(a=>{
+      const down = isDown(a);
+      const cls = down ? "down" : a.implemented ? "live" : "static";
+      const badge = down
+        ? '<span class="badge down">● UNREACHABLE</span>'
+        : a.implemented
+          ? '<span class="badge">● LIVE</span>'
+          : '<span class="badge static">● Catalog only</span>';
+      const why = down && a.statusNote ? `<div class="why">${esc(a.statusNote)}</div>` : "";
+      return `
+      <div class="card ${cls}" data-name="${esc(a.name)}">
+        <div class="name">${esc(a.name)}</div>
+        <div class="desc">${esc(a.description)}</div>
+        ${badge}
+        ${why}
+      </div>`;
+    }).join("");
+    return `<div class="group">
+      <div class="group-hd">${ICONS[g]||DEFAULT_ICON}<span class="group-lab">${esc(g)}</span><span class="group-count">(${groupApis.length})</span></div>
+      <div class="grid">${cards}</div>
+    </div>`;
+  }).join("");
+
+  root.innerHTML = `<div class="hd">
+      <h1>Fannie Mae Public APIs</h1>
+      <div class="stats"><span><b>${apis.length}</b> total APIs</span><span><b>${liveCount}</b> live in this connector</span>${downCount?`<span><b class="warn">${downCount}</b> unreachable</span>`:""}<span><b>${apis.length-liveCount-downCount}</b> catalog-only</span></div>
+    </div>
+    <div class="search"><input type="text" id="q" placeholder="Search APIs by name, category, or description…" value="${esc(query)}" /></div>
+    ${visible.length===0 ? '<div class="no-results">No APIs match your search.</div>' : sections}`;
+
+  root.querySelectorAll(".card.live, .card.down").forEach(card=>{
+    card.addEventListener("click", ()=>{
+      ask(`Show me the ${card.dataset.name} details and let me try it.`);
+    });
+  });
+
+  const searchInput = root.querySelector("#q");
+  if(searchInput){
+    searchInput.addEventListener("input", (e)=>{
+      query = e.target.value;
+      render();
+      const freshInput = document.getElementById("q");
+      if(freshInput){
+        freshInput.focus();
+        freshInput.setSelectionRange(query.length, query.length);
+      }
+    });
+  }
+}
+
+(async()=>{
+  app=new App({name:"FnmaCatalog",version:"1.0.0"},{availableDisplayModes:["inline"]},{autoResize:true});
+  const theme=()=>{try{document.documentElement.classList.toggle("dark",ctx().theme==="dark")}catch{}};
+  app.ontoolresult=(result)=>{ try{ DATA=result?.structuredContent ?? JSON.parse(result.content[0].text); }catch{ DATA=null; } theme(); render(); };
+  app.onhostcontextchanged=()=>{ theme(); render(); };
+  await app.connect();
+  theme(); render();
+})();
+</script>
