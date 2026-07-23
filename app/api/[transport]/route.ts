@@ -1,6 +1,7 @@
 import { createMcpHandler } from "mcp-handler";
 import { z } from "zod";
 import { API_CATALOG, runOperation } from "@/lib/fanniemae";
+import { OPERATION_PARAMS, BATCH_ENCODING_NOTE } from "@/lib/operation-params";
 import { registerWidgets } from "@/lib/widgets";
 
 export const dynamic = "force-dynamic";
@@ -21,33 +22,12 @@ const handler = createMcpHandler(
       "Directly call a Fannie Mae API operation and get plain JSON back -- no widget is rendered. " +
         "Use this instead of fnma_show_api_detail when the user explicitly wants raw data/text " +
         "rather than the visual catalog, or on a surface that can't render widgets. Pass api_name " +
-        "(exact name from list_apis) and operation_id, plus whichever params that operation needs.",
+        "(exact name from list_apis) and operation_id, plus whichever params that operation needs. " +
+        BATCH_ENCODING_NOTE,
       {
         api_name: z.string().describe("Exact API name, e.g. 'Loan Limits API'"),
         operation_id: z.string().describe("Operation id, e.g. 'getLoanLimitsByCounty'"),
-        state: z.string().optional(),
-        county: z.string().optional(),
-        year: z.number().optional(),
-        month: z.number().optional(),
-        quarter: z.string().optional(),
-        fips_code: z.string().optional(),
-        number: z.string().optional(),
-        street: z.string().optional(),
-        city: z.string().optional(),
-        zip: z.string().optional(),
-        indicator: z.string().optional(),
-        page: z.string().optional(),
-        section: z.string().optional(),
-        sector: z.string().optional(),
-        subsector: z.string().optional(),
-        id: z.string().optional(),
-        areatype: z.string().optional(),
-        ownershipstatus: z.string().optional(),
-        housingcostratio: z.string().optional(),
-        agegp: z.string().optional(),
-        censusregion: z.string().optional(),
-        startDate: z.string().optional(),
-        endDate: z.string().optional(),
+        ...OPERATION_PARAMS,
       },
       async ({ api_name, operation_id, ...params }) => {
         const entry = API_CATALOG.find((a) => a.name.toLowerCase() === api_name.toLowerCase());
@@ -64,7 +44,22 @@ const handler = createMcpHandler(
           };
         }
 
-        const data = await runOperation(operation_id, params as Record<string, string | number>);
+        const known = new Set((entry.operations ?? []).map((o) => o.id));
+        if (!known.has(operation_id)) {
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  `"${operation_id}" isn't an operation on ${entry.name}. Available: ` +
+                  [...known].join(", "),
+              },
+            ],
+            isError: true,
+          };
+        }
+
+        const data = await runOperation(operation_id, params as Record<string, any>);
         return { content: [{ type: "text", text: JSON.stringify(data, null, 2) }] };
       }
     );

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { API_CATALOG, runOperation } from "./fanniemae";
+import { OPERATION_PARAMS, BATCH_ENCODING_NOTE } from "./operation-params";
 import { WIDGETS } from "../app/_widgets.js";
 
 const APP_MIME = "text/html;profile=mcp-app";
@@ -40,50 +41,11 @@ export function registerWidgets(server: any) {
         "a live operation, also pass operation_id and whichever of the other " +
         "params that specific operation needs (see the operation's own params " +
         "list from a prior fnma_show_api_detail call, or list_apis). " +
-        "Batch operations (getMultipleConstructionSpending, " +
-        "getMultiplePoolPrefixes) take a list encoded as a single string: " +
-        "pipe separates items, slash separates fields within an item, e.g. " +
-        "queryItems='Total | Total/Residential | Private/Nonresidential/Office'. " +
-        "Every operation is read-only, including the ones issued as POST.",
+        BATCH_ENCODING_NOTE,
       inputSchema: {
         api_name: z.string().describe("Exact API name from the catalog, e.g. 'Loan Limits API'"),
         operation_id: z.string().optional().describe("Operation id to execute. Omit to just show the API's details without running anything."),
-        state: z.string().optional(),
-        county: z.string().optional(),
-        year: z.number().optional(),
-        month: z.number().optional(),
-        quarter: z.string().optional(),
-        fips_code: z.string().optional(),
-        number: z.string().optional(),
-        street: z.string().optional(),
-        city: z.string().optional(),
-        zip: z.string().optional(),
-        address: z.string().optional().describe("Full free-text address, for validateOpportunityZoneByAddressPost"),
-        indicator: z.string().optional(),
-        page: z.string().optional(),
-        section: z.string().optional(),
-        sector: z.string().optional(),
-        subsector: z.string().optional(),
-        queryItems: z.string().optional().describe("Batch construction-spending paths: 'Total | Total/Residential | Private/Nonresidential/Office' (pipe = item, slash = section/sector/subsector)"),
-        businessLine: z.string().optional().describe("Pool prefix business line, e.g. 'Single-Family' or 'Multifamily'"),
-        amortizationType: z.string().optional().describe("Pool prefix amortization type, e.g. 'Fixed' or 'ARM'"),
-        prefix: z.string().optional().describe("Two-letter pool prefix, e.g. '2L'"),
-        keyword: z.string().optional().describe("Pool prefix description keyword, e.g. 'Reperforming'"),
-        prefixRequests: z.string().optional().describe("Batch pool-prefix requests: 'Single-Family/Fixed | Multifamily/ARM' (pipe = item, slash = businessLine/amortizationType)"),
-        aggregationColumns: z.string().optional().describe("HERA aggregation columns"),
-        groupByColumns: z.string().optional().describe("HERA group-by columns, comma-separated"),
-        whereClauseColumns: z.string().optional().describe("HERA where-clause columns"),
-        whereClauseValues: z.string().optional().describe("HERA where-clause values, pipe-separated, positionally matching whereClauseColumns"),
-        id: z.string().optional(),
-        areatype: z.string().optional(),
-        ownershipstatus: z.string().optional(),
-        housingcostratio: z.string().optional(),
-        agegp: z.string().optional(),
-        censusregion: z.string().optional(),
-        incomegp: z.string().optional(),
-        educationlvl: z.string().optional(),
-        startDate: z.string().optional(),
-        endDate: z.string().optional(),
+        ...OPERATION_PARAMS,
       },
       _meta: { ui: { resourceUri: widgetUri("api-detail") } },
     },
