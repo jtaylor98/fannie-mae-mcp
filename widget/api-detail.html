@@ -1,0 +1,177 @@
+<!doctype html>
+<meta charset="utf-8" />
+<!--
+  Fannie Mae API detail -- per-API drill-down widget. Shows description +
+  available operations. For each operation, an inline form lets you fill
+  params and run it; clicking Run sends a chat message asking Claude to
+  execute that specific operation, which re-renders this same widget with
+  the live result included.
+
+  Params come in two shapes:
+    kind:"scalar"   (default) -- one text input
+    kind:"itemList"           -- repeatable rows for batch POST bodies,
+                                 encoded back out as
+                                 "a/b/c | d/e" (pipe = item, slash = field)
+-->
+<style>
+  /*__BRAND__*/
+  *{box-sizing:border-box} html,body{margin:0}
+  body{font-family:var(--font);color:var(--body);background:var(--paper);font-size:13px;color-scheme:light dark}
+  #root{max-width:720px;margin:0 auto}
+  .hd{padding:12px 16px 4px}
+  .hd h1{font-size:14px;font-weight:700;color:var(--accent);margin:0}
+  .hd .desc{font-size:11.5px;color:var(--muted);margin-top:4px;line-height:1.4}
+  .op{border:1px solid var(--line);border-radius:6px;padding:10px 12px;margin:8px 16px}
+  .op-lab{font-weight:700;font-size:12px;margin-bottom:6px;display:flex;align-items:center;gap:6px}
+  .verb{font-size:9px;font-weight:700;letter-spacing:.04em;padding:2px 5px;border-radius:3px;border:1px solid var(--line);color:var(--muted);background:var(--off)}
+  .verb.post{color:var(--paper);background:var(--accent);border-color:var(--accent)}
+  .op-note{font-size:10.5px;color:var(--muted);line-height:1.4;margin:-2px 0 7px}
+  .op-params{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}
+  .op-params input{border:1px solid var(--slate);border-radius:4px;padding:4px 7px;font-size:11.5px;background:var(--paper);color:var(--body);width:120px}
+  .op-params label{font-size:10px;color:var(--muted);display:block;margin-bottom:2px}
+  .opt{opacity:.7;font-style:italic}
+  .hint{font-size:9.5px;color:var(--muted);margin-top:3px;line-height:1.35}
+  .ilist{flex:1 1 100%;min-width:0}
+  .ilist-row{display:flex;gap:5px;align-items:center;margin-bottom:4px}
+  .ilist-row input{width:auto;flex:1 1 0;min-width:0}
+  .del-row{border:1px solid var(--slate);border-radius:4px;background:var(--paper);color:var(--muted);cursor:pointer;font-size:12px;line-height:1;padding:4px 7px;flex:0 0 auto}
+  .del-row:hover{color:var(--body)}
+  .add-row{border:1px dashed var(--slate);border-radius:4px;background:transparent;color:var(--muted);cursor:pointer;font-size:10.5px;padding:3px 9px;margin-top:2px}
+  .add-row:hover{color:var(--accent);border-color:var(--accent)}
+  .run-btn{border:none;border-radius:4px;padding:5px 12px;font-size:11px;font-weight:700;background:var(--accent);color:var(--paper);cursor:pointer}
+  .run-btn:hover{opacity:.85}
+  .result{margin-top:8px;background:var(--off);border-radius:4px;padding:8px;font-size:11px;max-height:220px;overflow:auto;white-space:pre-wrap;font-family:ui-monospace,monospace}
+  .empty{padding:26px 16px;color:var(--muted);text-align:center}
+  .not-implemented{padding:12px 16px;color:var(--muted);font-size:12px}
+</style>
+<div id="root"><div class="empty">Loading API details…</div></div>
+<script type="module">
+/*__EXT_APPS_BUNDLE__*/
+const { App } = globalThis.ExtApps;
+const esc=(s)=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+
+let DATA=null, app=null;
+const ctx=()=>app?.getHostContext?.()||{};
+function ask(text){ try{ app.sendMessage({role:"user",content:[{type:"text",text}]}); }catch{} }
+
+// "Total | Total/Residential" -> [["Total"],["Total","Residential"]]
+function splitExample(example){
+  return String(example==null?"":example)
+    .split("|").map(s=>s.trim()).filter(Boolean)
+    .map(item=>item.split("/").map(p=>p.trim()));
+}
+
+function itemRowHtml(fields, values){
+  const inputs = fields.map((f,i)=>
+    `<input type="text" data-field="${esc(f)}" placeholder="${esc(values && values[i] ? values[i] : f)}" />`
+  ).join("");
+  return `<div class="ilist-row">${inputs}<button class="del-row" type="button" title="Remove row">&times;</button></div>`;
+}
+
+function paramControl(p){
+  if(p.kind === "itemList"){
+    const fields = p.fields || [];
+    const rows = splitExample(p.example).map(vals=>itemRowHtml(fields, vals)).join("")
+      || itemRowHtml(fields, null);
+    return `<div class="ilist" data-param="${esc(p.name)}" data-fields="${esc(fields.join(","))}">
+      <label>${esc(p.name)} <span class="opt">(${esc(fields.join(" / "))})</span></label>
+      <div class="ilist-rows">${rows}</div>
+      <button class="add-row" type="button">+ Add row</button>
+      ${p.hint ? `<div class="hint">${esc(p.hint)}</div>` : ""}
+    </div>`;
+  }
+  return `<div>
+    <label>${esc(p.name)}${p.optional ? ' <span class="opt">optional</span>' : ""}</label>
+    <input type="text" data-param="${esc(p.name)}" placeholder="${esc(String(p.example))}" />
+    ${p.hint ? `<div class="hint">${esc(p.hint)}</div>` : ""}
+  </div>`;
+}
+
+// Collapse the repeating rows back into the compact "a/b | c/d" encoding
+// that lib/fanniemae.ts:parseItemList expects.
+function readItemList(listEl, fields){
+  return [...listEl.querySelectorAll(".ilist-row")].map(row=>{
+    const vals = fields.map(f=>{
+      const input = row.querySelector(`input[data-field="${f}"]`);
+      return ((input && (input.value || input.placeholder)) || "").trim();
+    });
+    // drop trailing blanks so a section-only row stays section-only
+    while(vals.length && !vals[vals.length-1]) vals.pop();
+    return vals.join("/");
+  }).filter(Boolean).join(" | ");
+}
+
+function render(){
+  const root=document.getElementById("root");
+  if(!DATA){ root.innerHTML='<div class="empty">No API selected.</div>'; return; }
+
+  const head = `<div class="hd"><h1>${esc(DATA.name)}</h1><div class="desc">${esc(DATA.description)}</div></div>`;
+
+  if(!DATA.implemented){
+    root.innerHTML = head + `<div class="not-implemented">This API isn't wired up to live data in this connector yet -- catalog entry only.</div>`;
+    return;
+  }
+
+  const ops = (DATA.operations||[]).map(op=>{
+    const method = (op.method || "GET").toUpperCase();
+    const verb = `<span class="verb ${method === "POST" ? "post" : ""}">${esc(method)}</span>`;
+    const inputs = (op.params||[]).map(paramControl).join("");
+    const note = op.note ? `<div class="op-note">${esc(op.note)}</div>` : "";
+    const resultBlock = (DATA.lastResult && DATA.lastResult.operationId===op.id)
+      ? `<div class="result">${esc(JSON.stringify(DATA.lastResult.data, null, 2))}</div>`
+      : "";
+    return `<div class="op" data-op="${esc(op.id)}">
+      <div class="op-lab">${verb}${esc(op.label)}</div>
+      ${note}
+      <div class="op-params">${inputs}</div>
+      <button class="run-btn" type="button">Run</button>
+      ${resultBlock}
+    </div>`;
+  }).join("");
+
+  root.innerHTML = head + ops;
+
+  root.querySelectorAll(".op").forEach(opEl=>{
+    const opId = opEl.dataset.op;
+    const op = (DATA.operations||[]).find(o=>o.id===opId);
+
+    opEl.querySelectorAll(".ilist").forEach(listEl=>{
+      const fields = (listEl.dataset.fields||"").split(",").filter(Boolean);
+      const rowsEl = listEl.querySelector(".ilist-rows");
+      listEl.querySelector(".add-row").addEventListener("click", ()=>{
+        rowsEl.insertAdjacentHTML("beforeend", itemRowHtml(fields, null));
+      });
+      rowsEl.addEventListener("click", (e)=>{
+        const btn = e.target.closest(".del-row");
+        if(!btn) return;
+        if(rowsEl.querySelectorAll(".ilist-row").length > 1) btn.parentElement.remove();
+      });
+    });
+
+    opEl.querySelector(".run-btn").addEventListener("click", ()=>{
+      const paramParts = (op.params||[]).map(p=>{
+        if(p.kind === "itemList"){
+          const listEl = opEl.querySelector(`.ilist[data-param="${p.name}"]`);
+          const fields = (listEl.dataset.fields||"").split(",").filter(Boolean);
+          const val = readItemList(listEl, fields) || p.example;
+          return `${p.name}="${val}"`;
+        }
+        const input = opEl.querySelector(`input[data-param="${p.name}"]`);
+        const val = (input?.value || (p.optional ? "" : p.example));
+        return val ? `${p.name}=${val}` : "";
+      }).filter(Boolean);
+      const paramText = paramParts.length ? ` with ${paramParts.join(", ")}` : "";
+      ask(`Run the ${op.label} operation on ${DATA.name}${paramText}.`);
+    });
+  });
+}
+
+(async()=>{
+  app=new App({name:"FnmaApiDetail",version:"1.0.0"},{availableDisplayModes:["inline"]},{autoResize:true});
+  const theme=()=>{try{document.documentElement.classList.toggle("dark",ctx().theme==="dark")}catch{}};
+  app.ontoolresult=(result)=>{ try{ DATA=result?.structuredContent ?? JSON.parse(result.content[0].text); }catch{ DATA=null; } theme(); render(); };
+  app.onhostcontextchanged=()=>{ theme(); render(); };
+  await app.connect();
+  theme(); render();
+})();
+</script>
