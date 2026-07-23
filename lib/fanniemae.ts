@@ -39,11 +39,6 @@ async function getAccessToken(): Promise<string> {
   return cachedToken.token;
 }
 
-// NOTE: Fannie Mae's public-API gateway does NOT use standard OAuth Bearer
-// auth for the resource calls themselves -- despite issuing a normal-looking
-// JWT, the actual data API expects that token in a custom
-// `x-public-access-token` header instead of `Authorization: Bearer`.
-// Confirmed via direct curl testing.
 async function fannieGet(path: string, query?: Record<string, string | number | undefined>): Promise<any> {
   const token = await getAccessToken();
   const qs = query
@@ -63,7 +58,6 @@ async function fannieGet(path: string, query?: Record<string, string | number | 
   return res.json();
 }
 
-// --- Loan Limits API -------------------------------------------------------
 export async function getAllLoanLimits() {
   return fannieGet("/v1/loan-limits/all");
 }
@@ -74,7 +68,6 @@ export async function getLoanLimitsByCounty(state: string, county: string) {
   return fannieGet(`/v1/loan-limits/state/${state}/county/${county}`);
 }
 
-// --- Income Limits API ------------------------------------------------------
 export async function getIncomeLimitsForFipsCode(fips_code: string) {
   return fannieGet("/v1/income-limits/censustracts", { fips_code });
 }
@@ -82,7 +75,6 @@ export async function getIncomeLimitsByAddress(number: string, street: string, c
   return fannieGet("/v1/income-limits/addresscheck", { number, street, city, state, zip });
 }
 
-// --- Opportunity Zones API --------------------------------------------------
 export async function validateOpportunityZoneByAddress(number: string, street: string, city: string, state: string, zip: string) {
   return fannieGet("/v1/opportunity-zones/addresscheck", { number, street, city, state, zip });
 }
@@ -90,7 +82,6 @@ export async function getOpportunityZoneDataForCounty(state: string, county?: st
   return fannieGet("/v1/opportunity-zones/censustracts", { state, county });
 }
 
-// --- Economic Indicators API ------------------------------------------------
 export async function getEconomicIndicatorsByName(indicator: string) {
   return fannieGet(`/v1/economic-forecasts/indicators/${indicator}`);
 }
@@ -101,7 +92,6 @@ export async function getEconomicIndicatorForYearAndMonth(year: number, month: n
   return fannieGet(`/v1/economic-forecasts/reports/years/${year}/months/${month}`);
 }
 
-// --- Housing Indicators API -------------------------------------------------
 export async function getHousingIndicatorsByName(indicator: string) {
   return fannieGet(`/v1/housing-indicators/indicators/${indicator}`);
 }
@@ -109,17 +99,14 @@ export async function getHousingIndicatorForYear(year: number) {
   return fannieGet(`/v1/housing-indicators/data/years/${year}`);
 }
 
-// --- HERA (National File B) API ---------------------------------------------
 export async function getAllNationalFileB(page?: string) {
   return fannieGet("/v1/national-file-b/all", { page });
 }
 
-// --- Construction Spending API ----------------------------------------------
 export async function getConstructionSpendingBySectionAndSector(section: string, sector: string) {
   return fannieGet("/v1/construction-spending/sectionandsector", { section, sector });
 }
 
-// --- Manufactured Housing Loans API -----------------------------------------
 export async function getManufacturedHousingLoan(id: string) {
   return fannieGet(`/v1/manufactured-housing-loans/${id}`);
 }
@@ -127,15 +114,28 @@ export async function getManufacturedHousingAcquisitions(page?: string) {
   return fannieGet("/v1/manufactured-housing-loans/acquisitions", { page });
 }
 
-// --- National Housing Survey API --------------------------------------------
 export async function getNhsResults() {
   return fannieGet("/v1/nhs/results");
 }
 export async function getHpsiData() {
   return fannieGet("/v1/nhs/hpsi");
 }
+export async function getHpsiByAreaType(areatype: string) {
+  return fannieGet(`/v1/nhs/hpsi/area-type/${areatype}`);
+}
+export async function getHpsiByOwnershipStatus(ownershipstatus: string) {
+  return fannieGet(`/v1/nhs/hpsi/ownership-status/${ownershipstatus}`);
+}
+export async function getHpsiByHousingCostRatio(housingcostratio: string) {
+  return fannieGet(`/v1/nhs/hpsi/housing-cost-ratio/${housingcostratio}`);
+}
+export async function getHpsiByAgeGroup(agegp: string) {
+  return fannieGet(`/v1/nhs/hpsi/age-groups/${agegp}`);
+}
+export async function getHpsiByCensusRegion(censusregion: string) {
+  return fannieGet(`/v1/nhs/hpsi/census-region/${censusregion}`);
+}
 
-// --- Connecticut Avenue Securities (CAS) API ---------------------------------
 export async function getCasCurrentReportingPeriod() {
   return fannieGet("/v1/connecticut-ave-securities/current-reporting-period");
 }
@@ -143,7 +143,6 @@ export async function getCasProgramToDate() {
   return fannieGet("/v1/connecticut-ave-securities/program-to-date");
 }
 
-// --- Credit Insurance Risk Transfer (CIRT) API -------------------------------
 export async function getCirtProgramToDate() {
   return fannieGet("/v1/credit-insurance-risk-transfer/program-to-date");
 }
@@ -151,7 +150,6 @@ export async function getCirtCurrentReportingPeriod() {
   return fannieGet("/v1/credit-insurance-risk-transfer/current-reporting-period");
 }
 
-// --- Refinance Application-Level Index (RALI) API ----------------------------
 export async function getMostRecentRaliWeek() {
   return fannieGet("/v1/rali/most-recent-week");
 }
@@ -159,7 +157,6 @@ export async function getRaliAllWeeks() {
   return fannieGet("/v1/rali/all-weeks");
 }
 
-// --- Re-Performing Loans API --------------------------------------------------
 export async function getRplPerformanceFile() {
   return fannieGet("/v1/rpl/performance");
 }
@@ -167,7 +164,6 @@ export async function getRplLoanDetailFile() {
   return fannieGet("/v1/rpl/loan-detail");
 }
 
-// --- Single-Family Loan Performance History API ------------------------------
 export async function getLphDataForYearAndQuarter(year: number, quarter: string) {
   return fannieGet(`/v1/sf-loan-performance-data/years/${year}/quarters/${quarter}`);
 }
@@ -199,135 +195,24 @@ const ECON_INDICATORS = ["gross-domestic-product","personal-consumption-expendit
 const HOUSING_INDICATORS = ["total-housing-starts","single-family-1-unit-housing-starts","multifamily-2+units-housing-starts","total-home-sales","new-single-family-home-sales","existing-single-family-condos-coops-home-sales","median-new-home-price","median-existing-home-price","federal-housing-finance-agency-purchase-only-house-price-index","30-year-fixed-rate-mortgage","5-year-adjustable-rate-mortgage","single-family-mortgage-originations","single-family-purchase-mortgage-originations","single-family-refinance-mortgage-originations","refinance-share-of-total-single-family-mortgage-originations"];
 
 export const API_CATALOG: ApiCatalogEntry[] = [
-  {
-    name: "Connecticut Avenue Securities API", tag: "Pricing & Execution",
-    description: "Provides loan level data underlying Single-Family Connecticut Avenue Securities (CAS) deals.",
-    implemented: true,
-    operations: [
-      { id: "getCasCurrentReportingPeriod", label: "Current reporting period", params: [] },
-      { id: "getCasProgramToDate", label: "Full program-to-date dataset", params: [] },
-    ],
-  },
-  {
-    name: "Construction Spending API", tag: "Originating & Underwriting",
-    description: "Monthly estimates of the total dollar value of construction work done in the U.S.",
-    implemented: true,
-    operations: [
-      { id: "getConstructionSpendingBySectionAndSector", label: "Get by section + sector", params: [{ name: "section", type: "string", example: "Total" }, { name: "sector", type: "string", example: "Residential" }] },
-    ],
-  },
-  {
-    name: "Credit Insurance Risk Transfer API", tag: "Pricing & Execution",
-    description: "Provides loan level data underlying Single-Family Credit Insurance Risk Transfer (CIRT) deals.",
-    implemented: true,
-    operations: [
-      { id: "getCirtCurrentReportingPeriod", label: "Current reporting period", params: [] },
-      { id: "getCirtProgramToDate", label: "Full program-to-date dataset", params: [] },
-    ],
-  },
-  {
-    name: "Economic Indicators API", tag: "Originating & Underwriting",
-    description: "Analysis of current and historical data for the economic forecast.",
-    implemented: true,
-    operations: [
-      { id: "getEconomicIndicatorsByName", label: "Get one indicator's full history", params: [{ name: "indicator", type: "string", example: ECON_INDICATORS[0] }] },
-      { id: "getEconomicIndicatorForYear", label: "Get all indicators for a year", params: [{ name: "year", type: "number", example: 2026 }] },
-      { id: "getEconomicIndicatorForYearAndMonth", label: "Get report for a specific year + month", params: [{ name: "year", type: "number", example: 2026 }, { name: "month", type: "number", example: 5 }] },
-    ],
-  },
+  { name: "Connecticut Avenue Securities API", tag: "Pricing & Execution", description: "Provides loan level data underlying Single-Family Connecticut Avenue Securities (CAS) deals.", implemented: true, operations: [{ id: "getCasCurrentReportingPeriod", label: "Current reporting period", params: [] }, { id: "getCasProgramToDate", label: "Full program-to-date dataset", params: [] }] },
+  { name: "Construction Spending API", tag: "Originating & Underwriting", description: "Monthly estimates of the total dollar value of construction work done in the U.S.", implemented: true, operations: [{ id: "getConstructionSpendingBySectionAndSector", label: "Get by section + sector", params: [{ name: "section", type: "string", example: "Total" }, { name: "sector", type: "string", example: "Residential" }] }] },
+  { name: "Credit Insurance Risk Transfer API", tag: "Pricing & Execution", description: "Provides loan level data underlying Single-Family Credit Insurance Risk Transfer (CIRT) deals.", implemented: true, operations: [{ id: "getCirtCurrentReportingPeriod", label: "Current reporting period", params: [] }, { id: "getCirtProgramToDate", label: "Full program-to-date dataset", params: [] }] },
+  { name: "Economic Indicators API", tag: "Originating & Underwriting", description: "Analysis of current and historical data for the economic forecast.", implemented: true, operations: [{ id: "getEconomicIndicatorsByName", label: "Get one indicator's full history", params: [{ name: "indicator", type: "string", example: ECON_INDICATORS[0] }] }, { id: "getEconomicIndicatorForYear", label: "Get all indicators for a year", params: [{ name: "year", type: "number", example: 2026 }] }, { id: "getEconomicIndicatorForYearAndMonth", label: "Get report for a specific year + month", params: [{ name: "year", type: "number", example: 2026 }, { name: "month", type: "number", example: 5 }] }] },
   { name: "Gateway Services Public API", tag: "Servicing", description: "Public API swagger for Gateway Services." },
-  {
-    name: "Housing and Economic Recovery Act (HERA) API", tag: "Originating & Underwriting",
-    description: "Public Use Database -- HERA API.",
-    implemented: true,
-    operations: [
-      { id: "getAllNationalFileB", label: "Get all Single-Family Unit-Level Properties (paginated)", params: [{ name: "page", type: "string", example: "0" }] },
-    ],
-  },
-  {
-    name: "Housing Indicators API", tag: "Originating & Underwriting",
-    description: "Analysis of current and historical data for the housing forecast.",
-    implemented: true,
-    operations: [
-      { id: "getHousingIndicatorsByName", label: "Get one indicator's full history", params: [{ name: "indicator", type: "string", example: HOUSING_INDICATORS[0] }] },
-      { id: "getHousingIndicatorForYear", label: "Get all indicators for a year", params: [{ name: "year", type: "number", example: 2026 }] },
-    ],
-  },
-  {
-    name: "Income Limits API", tag: "Originating & Underwriting",
-    description: "Income Limits for HomeReady(R) and other AMI-based loan products.",
-    implemented: true,
-    operations: [
-      { id: "getIncomeLimitsForFipsCode", label: "Get by census tract (FIPS code)", params: [{ name: "fips_code", type: "string", example: "06037101110" }] },
-      { id: "getIncomeLimitsByAddress", label: "Get by street address", params: [{ name: "number", type: "string", example: "13150" }, { name: "street", type: "string", example: "Worldgate Drive" }, { name: "city", type: "string", example: "Herndon" }, { name: "state", type: "string", example: "VA" }, { name: "zip", type: "string", example: "20171" }] },
-    ],
-  },
-  {
-    name: "Loan Limits API", tag: "Originating & Underwriting",
-    description: "Loan limits data for US territories and counties.",
-    implemented: true,
-    operations: [
-      { id: "getAllLoanLimits", label: "Get all loan limits", params: [] },
-      { id: "getHistoricalLoanLimits", label: "Get historical loan limits by year", params: [{ name: "year", type: "number", example: 2015 }] },
-      { id: "getLoanLimitsByCounty", label: "Get loan limits by state + county", params: [{ name: "state", type: "string", example: "CA" }, { name: "county", type: "string", example: "Los Angeles" }] },
-    ],
-  },
-  {
-    name: "Manufactured Housing Loans API", tag: "Single Family",
-    description: "Manufactured Housing Loan data including search by specification, acquisition data, performance data.",
-    implemented: true,
-    operations: [
-      { id: "getManufacturedHousingLoan", label: "Get a specific loan by ID", params: [{ name: "id", type: "string", example: "replace-with-real-loan-id" }] },
-      { id: "getManufacturedHousingAcquisitions", label: "Get all loan acquisitions (paginated)", params: [{ name: "page", type: "string", example: "0" }] },
-    ],
-  },
-  {
-    name: "National Housing Survey API", tag: "Originating & Underwriting",
-    description: "National Housing Survey (NHS) Data.",
-    implemented: true,
-    operations: [
-      { id: "getNhsResults", label: "Get all survey results", params: [] },
-      { id: "getHpsiData", label: "Get Home Purchase Sentiment Index (HPSI) data", params: [] },
-    ],
-  },
-  { name: "Opportunity Zones API", tag: "Originating & Underwriting", description: "Opportunity Zones for United States and its territories.",
-    implemented: true,
-    operations: [
-      { id: "validateOpportunityZoneByAddress", label: "Check if an address is in an Opportunity Zone", params: [{ name: "number", type: "string", example: "13150" }, { name: "street", type: "string", example: "Worldgate Drive" }, { name: "city", type: "string", example: "Herndon" }, { name: "state", type: "string", example: "VA" }, { name: "zip", type: "string", example: "20171" }] },
-      { id: "getOpportunityZoneDataForCounty", label: "Get by state + county", params: [{ name: "state", type: "string", example: "VA" }, { name: "county", type: "string", example: "Arlington" }] },
-    ],
-  },
+  { name: "Housing and Economic Recovery Act (HERA) API", tag: "Originating & Underwriting", description: "Public Use Database -- HERA API.", implemented: true, operations: [{ id: "getAllNationalFileB", label: "Get all Single-Family Unit-Level Properties (paginated)", params: [{ name: "page", type: "string", example: "0" }] }] },
+  { name: "Housing Indicators API", tag: "Originating & Underwriting", description: "Analysis of current and historical data for the housing forecast.", implemented: true, operations: [{ id: "getHousingIndicatorsByName", label: "Get one indicator's full history", params: [{ name: "indicator", type: "string", example: HOUSING_INDICATORS[0] }] }, { id: "getHousingIndicatorForYear", label: "Get all indicators for a year", params: [{ name: "year", type: "number", example: 2026 }] }] },
+  { name: "Income Limits API", tag: "Originating & Underwriting", description: "Income Limits for HomeReady(R) and other AMI-based loan products.", implemented: true, operations: [{ id: "getIncomeLimitsForFipsCode", label: "Get by census tract (FIPS code)", params: [{ name: "fips_code", type: "string", example: "06037101110" }] }, { id: "getIncomeLimitsByAddress", label: "Get by street address", params: [{ name: "number", type: "string", example: "13150" }, { name: "street", type: "string", example: "Worldgate Drive" }, { name: "city", type: "string", example: "Herndon" }, { name: "state", type: "string", example: "VA" }, { name: "zip", type: "string", example: "20171" }] }] },
+  { name: "Loan Limits API", tag: "Originating & Underwriting", description: "Loan limits data for US territories and counties.", implemented: true, operations: [{ id: "getAllLoanLimits", label: "Get all loan limits", params: [] }, { id: "getHistoricalLoanLimits", label: "Get historical loan limits by year", params: [{ name: "year", type: "number", example: 2015 }] }, { id: "getLoanLimitsByCounty", label: "Get loan limits by state + county", params: [{ name: "state", type: "string", example: "CA" }, { name: "county", type: "string", example: "Los Angeles" }] }] },
+  { name: "Manufactured Housing Loans API", tag: "Single Family", description: "Manufactured Housing Loan data including search by specification, acquisition data, performance data.", implemented: true, operations: [{ id: "getManufacturedHousingLoan", label: "Get a specific loan by ID", params: [{ name: "id", type: "string", example: "replace-with-real-loan-id" }] }, { id: "getManufacturedHousingAcquisitions", label: "Get all loan acquisitions (paginated)", params: [{ name: "page", type: "string", example: "0" }] }] },
+  { name: "National Housing Survey API", tag: "Originating & Underwriting", description: "National Housing Survey (NHS) Data.", implemented: true, operations: [{ id: "getNhsResults", label: "Get all survey results", params: [] }, { id: "getHpsiData", label: "Get all HPSI data", params: [] }, { id: "getHpsiByAreaType", label: "Get HPSI by area type", params: [{ name: "areatype", type: "string", example: "Urban" }] }, { id: "getHpsiByOwnershipStatus", label: "Get HPSI by ownership status", params: [{ name: "ownershipstatus", type: "string", example: "Owner" }] }, { id: "getHpsiByHousingCostRatio", label: "Get HPSI by housing cost ratio", params: [{ name: "housingcostratio", type: "string", example: "Under25" }] }, { id: "getHpsiByAgeGroup", label: "Get HPSI by age group", params: [{ name: "agegp", type: "string", example: "18-34" }] }, { id: "getHpsiByCensusRegion", label: "Get HPSI by census region", params: [{ name: "censusregion", type: "string", example: "South" }] }] },
+  { name: "Opportunity Zones API", tag: "Originating & Underwriting", description: "Opportunity Zones for United States and its territories.", implemented: true, operations: [{ id: "validateOpportunityZoneByAddress", label: "Check if an address is in an Opportunity Zone", params: [{ name: "number", type: "string", example: "13150" }, { name: "street", type: "string", example: "Worldgate Drive" }, { name: "city", type: "string", example: "Herndon" }, { name: "state", type: "string", example: "VA" }, { name: "zip", type: "string", example: "20171" }] }, { id: "getOpportunityZoneDataForCounty", label: "Get by state + county", params: [{ name: "state", type: "string", example: "VA" }, { name: "county", type: "string", example: "Arlington" }] }] },
   { name: "Pool Prefix API", tag: "Pricing & Execution", description: "Get pool prefix data by amortization type and/or property type and/or pool prefix." },
-  {
-    name: "Re-Performing Loans API", tag: "Pricing & Execution",
-    description: "Performance of Fannie Mae single-family mortgage loans that were permanently modified.",
-    implemented: true,
-    operations: [
-      { id: "getRplPerformanceFile", label: "Get monthly performance data", params: [] },
-      { id: "getRplLoanDetailFile", label: "Get static loan detail data", params: [] },
-    ],
-  },
-  {
-    name: "Refinance Application-Level Index API", tag: "Servicing",
-    description: "Refinance Application-Level Index data.",
-    implemented: true,
-    operations: [
-      { id: "getMostRecentRaliWeek", label: "Get most recent week", params: [] },
-      { id: "getRaliAllWeeks", label: "Get all weeks (2004-present)", params: [] },
-    ],
-  },
-  {
-    name: "Single-Family Loan Performance History API", tag: "Single Family",
-    description: "Single-Family Loan Performance History.",
-    implemented: true,
-    operations: [
-      { id: "getLphDataForYearAndQuarter", label: "Get by year + quarter", params: [{ name: "year", type: "number", example: 2020 }, { name: "quarter", type: "string", example: "Q1" }] },
-      { id: "getAllHarpDataset", label: "Get all HARP dataset", params: [] },
-    ],
-  },
+  { name: "Re-Performing Loans API", tag: "Pricing & Execution", description: "Performance of Fannie Mae single-family mortgage loans that were permanently modified.", implemented: true, operations: [{ id: "getRplPerformanceFile", label: "Get monthly performance data", params: [] }, { id: "getRplLoanDetailFile", label: "Get static loan detail data", params: [] }] },
+  { name: "Refinance Application-Level Index API", tag: "Servicing", description: "Refinance Application-Level Index data.", implemented: true, operations: [{ id: "getMostRecentRaliWeek", label: "Get most recent week", params: [] }, { id: "getRaliAllWeeks", label: "Get all weeks (2004-present)", params: [] }] },
+  { name: "Single-Family Loan Performance History API", tag: "Single Family", description: "Single-Family Loan Performance History.", implemented: true, operations: [{ id: "getLphDataForYearAndQuarter", label: "Get by year + quarter", params: [{ name: "year", type: "number", example: 2020 }, { name: "quarter", type: "string", example: "Q1" }] }, { id: "getAllHarpDataset", label: "Get all HARP dataset", params: [] }] },
 ];
 
-/** Dispatches a named operation (from an implemented API's `operations` list) to the real function that executes it. */
 export async function runOperation(operationId: string, params: Record<string, string | number>): Promise<any> {
   switch (operationId) {
     case "getAllLoanLimits": return getAllLoanLimits();
@@ -348,6 +233,11 @@ export async function runOperation(operationId: string, params: Record<string, s
     case "getManufacturedHousingAcquisitions": return getManufacturedHousingAcquisitions(params.page ? String(params.page) : undefined);
     case "getNhsResults": return getNhsResults();
     case "getHpsiData": return getHpsiData();
+    case "getHpsiByAreaType": return getHpsiByAreaType(String(params.areatype));
+    case "getHpsiByOwnershipStatus": return getHpsiByOwnershipStatus(String(params.ownershipstatus));
+    case "getHpsiByHousingCostRatio": return getHpsiByHousingCostRatio(String(params.housingcostratio));
+    case "getHpsiByAgeGroup": return getHpsiByAgeGroup(String(params.agegp));
+    case "getHpsiByCensusRegion": return getHpsiByCensusRegion(String(params.censusregion));
     case "getCasCurrentReportingPeriod": return getCasCurrentReportingPeriod();
     case "getCasProgramToDate": return getCasProgramToDate();
     case "getCirtCurrentReportingPeriod": return getCirtCurrentReportingPeriod();
