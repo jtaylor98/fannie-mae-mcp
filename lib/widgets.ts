@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { API_CATALOG, runOperation } from "./fanniemae";
 import { OPERATION_PARAMS, BATCH_ENCODING_NOTE } from "./operation-params";
+import { withBusinessLine, BUSINESS_LINE_ORDER } from "./business-line";
 import { WIDGETS } from "../app/_widgets.js";
 
 const APP_MIME = "text/html;profile=mcp-app";
@@ -15,7 +16,9 @@ export function registerWidgets(server: any) {
       title: "Show the Fannie Mae API catalog (overview)",
       description:
         "Render all 16 Fannie Mae public APIs as grouped cards -- what each " +
-        "contains, and which are live (clickable) vs catalog-only. Use for " +
+        "contains, and which are live (clickable) vs catalog-only. Cards can " +
+        "be grouped by business line (Single Family / Multifamily / Both / " +
+        "Market & Reference) or by function. Use for " +
         "'what Fannie Mae APIs are there', 'show me the catalog', or a " +
         "general overview request. No parameters, no network call.",
       inputSchema: {},
@@ -24,7 +27,7 @@ export function registerWidgets(server: any) {
     async () => {
       return {
         content: [{ type: "text", text: `Rendered the Fannie Mae API catalog (${API_CATALOG.length} APIs). Don't restate the list.` }],
-        structuredContent: { apis: API_CATALOG },
+        structuredContent: { apis: API_CATALOG.map(withBusinessLine), businessLineOrder: BUSINESS_LINE_ORDER },
         _meta: { ui: { resourceUri: widgetUri("catalog") } },
       };
     }
@@ -64,7 +67,7 @@ export function registerWidgets(server: any) {
         lastResult = { operationId: operation_id, data };
       }
 
-      const payload = { ...entry, lastResult };
+      const payload = { ...withBusinessLine(entry), lastResult };
 
       return {
         content: [

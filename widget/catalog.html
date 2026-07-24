@@ -1,15 +1,21 @@
 <!doctype html>
 <meta charset="utf-8" />
 <!--
-  Fannie Mae API catalog -- overview widget. Cards for all 16 public APIs,
-  grouped by tag, with search filtering.
+  Fannie Mae API catalog -- overview widget.
 
-  Three card states:
+  Grouping is switchable between two orthogonal dimensions:
+    businessLine -- Single Family / Multifamily / Both / Market & Reference
+    tag          -- Pricing & Execution / Originating & Underwriting / Servicing
+
+  These were previously conflated: "Single Family" sat in the tag list
+  alongside three functional categories, and was applied to only 2 of the 6
+  single-family APIs. They are now separate axes and each card shows the one
+  it is not currently grouped by.
+
+  Card states:
     live   (green)   -- implemented and reachable
-    down   (amber)   -- implemented but Fannie Mae's gateway rejects it;
-                        statusNote explains why. Still clickable.
-    static (neutral) -- catalog entry only, never wired up. Not an error,
-                        so it no longer borrows the amber warning color.
+    down   (amber)   -- implemented but Fannie Mae's gateway rejects it
+    static (neutral) -- catalog entry only
 -->
 <style>
   /*__BRAND__*/
@@ -21,9 +27,13 @@
   .stats{display:flex;gap:14px;margin-top:6px;font-size:11px;color:var(--muted);flex-wrap:wrap}
   .stats b{color:var(--body);font-weight:700}
   .stats b.warn{color:var(--watch)}
-  .search{margin:8px 16px 4px}
-  .search input{width:100%;border:1px solid var(--slate);border-radius:6px;padding:7px 10px;font-size:12px;background:var(--paper);color:var(--body)}
-  .search input:focus{outline:2px solid var(--pass);outline-offset:-1px}
+  .controls{display:flex;gap:8px;align-items:center;margin:8px 16px 4px;flex-wrap:wrap}
+  .controls input{flex:1 1 220px;min-width:0;border:1px solid var(--slate);border-radius:6px;padding:7px 10px;font-size:12px;background:var(--paper);color:var(--body)}
+  .controls input:focus{outline:2px solid var(--pass);outline-offset:-1px}
+  .seg{display:flex;border:1px solid var(--slate);border-radius:6px;overflow:hidden;flex:0 0 auto}
+  .seg button{border:none;background:var(--paper);color:var(--muted);font-size:10.5px;font-weight:700;padding:7px 11px;cursor:pointer;font-family:inherit}
+  .seg button.on{background:var(--accent);color:var(--paper)}
+  .seg button:not(.on):hover{color:var(--body)}
   .group{padding:4px 16px}
   .group-hd{display:flex;align-items:center;gap:6px;margin:12px 0 6px}
   .group-hd svg{width:13px;height:13px;color:var(--muted);flex:0 0 auto}
@@ -37,12 +47,14 @@
   .card.down:hover{box-shadow:0 3px 10px rgba(0,0,0,.10);transform:translateY(-1px)}
   .card.static{border-left:3px solid var(--slate);background:var(--off)}
   .name{font-weight:700;font-size:12px;margin-bottom:3px}
-  .card.static .name{color:var(--body)}
   .desc{font-size:11px;color:var(--muted);line-height:1.4}
-  .badge{display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:700;padding:2px 7px;border-radius:999px;background:var(--pass);color:var(--paper);margin-top:7px}
+  .meta{font-size:9px;color:var(--muted);margin-top:6px;text-transform:uppercase;letter-spacing:.03em}
+  .badges{display:flex;gap:5px;flex-wrap:wrap;align-items:center;margin-top:7px}
+  .badge{display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:700;padding:2px 7px;border-radius:999px;background:var(--pass);color:var(--paper)}
   .badge.down{background:var(--watch);color:var(--paper)}
   .badge.static{background:transparent;color:var(--muted);border:1px solid var(--slate)}
   .why{font-size:9.5px;color:var(--watch);line-height:1.4;margin-top:6px}
+  .empty-group{border:1px dashed var(--slate);border-radius:7px;padding:11px 13px;font-size:11px;color:var(--muted);line-height:1.45;grid-column:1/-1}
   .no-results{padding:20px 16px;color:var(--muted);text-align:center;font-size:12px}
 </style>
 <div id="root"><div style="padding:26px 16px;color:var(--muted);text-align:center">Loading catalog…</div></div>
@@ -51,24 +63,51 @@
 const { App } = globalThis.ExtApps;
 const esc=(s)=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 
-const ICONS = {
+const TAG_ICONS = {
   "Originating & Underwriting": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1m4 0h1m-6 4h1m4 0h1m-6 4h1m4 0h1"/></svg>',
   "Pricing & Execution": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
   "Servicing": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.9 4.9l2.9 2.9M16.2 16.2l2.9 2.9M2 12h4M18 12h4M4.9 19.1l2.9-2.9M16.2 7.8l2.9-2.9"/><circle cx="12" cy="12" r="3"/></svg>',
   "Single Family": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8M5 10v10h14V10"/></svg>',
 };
+const BL_ICONS = {
+  "Single Family": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8M5 10v10h14V10"/></svg>',
+  "Multifamily": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M6 21V4h6v17M12 21V9h6v12M8 8h2m-2 4h2m-2 4h2m4-4h2m-2 4h2"/></svg>',
+  "Both": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 21h20M4 21V11l5-4 5 4v10M14 21V8l5-3v16M6.5 13h1m-1 3h1m10-6h.01m-.01 3h.01"/></svg>',
+  "Market & Reference": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18M7 15l4-5 3 3 5-7"/></svg>',
+};
 const DEFAULT_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg>';
 
-let DATA=null, app=null, query="";
+// Shown in place of the grid when a business line has no APIs. The absence is
+// the answer to "separate multifamily from single family", so say it out loud
+// rather than silently hiding the group.
+const EMPTY_GROUP_NOTE = {
+  "Multifamily": "No API in this catalog is multifamily-only. Pool Prefix is the only one that covers multifamily at all, and it covers both business lines \u2014 you will find it under Both.",
+};
+
+let DATA=null, app=null, query="", groupBy="businessLine";
 const ctx=()=>app?.getHostContext?.()||{};
 function ask(text){ try{ app.sendMessage({role:"user",content:[{type:"text",text}]}); }catch{} }
 
 const isDown = (a)=> !!a.implemented && a.status === "unreachable";
+const keyOf = (a)=> groupBy === "businessLine" ? (a.businessLine || "Market & Reference") : a.tag;
+const otherOf = (a)=> groupBy === "businessLine" ? a.tag : (a.businessLine || "Market & Reference");
 
 function matches(api){
   if(!query) return true;
   const q = query.toLowerCase();
-  return api.name.toLowerCase().includes(q) || api.description.toLowerCase().includes(q) || api.tag.toLowerCase().includes(q);
+  return [api.name, api.description, api.tag, api.businessLine||""]
+    .some(v => String(v).toLowerCase().includes(q));
+}
+
+function groupOrder(apis){
+  if(groupBy === "businessLine"){
+    const declared = DATA?.businessLineOrder || [];
+    const seen = [...new Set(apis.map(keyOf))];
+    // declared order first, then anything unexpected, so a new business line
+    // added server-side still renders instead of vanishing
+    return [...declared, ...seen.filter(k=>!declared.includes(k))];
+  }
+  return [...new Set(apis.map(keyOf))];
 }
 
 function render(){
@@ -79,31 +118,38 @@ function render(){
   const downCount = apis.filter(isDown).length;
   const liveCount = apis.filter(a=>a.implemented && !isDown(a)).length;
   const visible = apis.filter(matches);
-  const groups = [...new Set(apis.map(a=>a.tag))];
+  const icons = groupBy === "businessLine" ? BL_ICONS : TAG_ICONS;
 
-  const sections = groups.map(g=>{
-    const groupApis = visible.filter(a=>a.tag===g);
-    if(groupApis.length===0) return "";
-    const cards = groupApis.map(a=>{
-      const down = isDown(a);
-      const cls = down ? "down" : a.implemented ? "live" : "static";
-      const badge = down
-        ? '<span class="badge down">● UNREACHABLE</span>'
-        : a.implemented
-          ? '<span class="badge">● LIVE</span>'
-          : '<span class="badge static">● Catalog only</span>';
-      const why = down && a.statusNote ? `<div class="why">${esc(a.statusNote)}</div>` : "";
-      return `
-      <div class="card ${cls}" data-name="${esc(a.name)}">
-        <div class="name">${esc(a.name)}</div>
-        <div class="desc">${esc(a.description)}</div>
-        ${badge}
-        ${why}
-      </div>`;
-    }).join("");
+  const sections = groupOrder(apis).map(g=>{
+    const groupApis = visible.filter(a=>keyOf(a)===g);
+    // keep declared-but-empty business lines visible when not searching
+    const showEmpty = groupApis.length===0 && !query && groupBy==="businessLine" && EMPTY_GROUP_NOTE[g];
+    if(groupApis.length===0 && !showEmpty) return "";
+
+    const body = showEmpty
+      ? `<div class="empty-group">${esc(EMPTY_GROUP_NOTE[g])}</div>`
+      : groupApis.map(a=>{
+          const down = isDown(a);
+          const cls = down ? "down" : a.implemented ? "live" : "static";
+          const badge = down
+            ? '<span class="badge down">● UNREACHABLE</span>'
+            : a.implemented
+              ? '<span class="badge">● LIVE</span>'
+              : '<span class="badge static">● Catalog only</span>';
+          const why = down && a.statusNote ? `<div class="why">${esc(a.statusNote)}</div>` : "";
+          return `
+          <div class="card ${cls}" data-name="${esc(a.name)}">
+            <div class="name">${esc(a.name)}</div>
+            <div class="desc">${esc(a.description)}</div>
+            <div class="badges">${badge}</div>
+            <div class="meta">${esc(otherOf(a))}</div>
+            ${why}
+          </div>`;
+        }).join("");
+
     return `<div class="group">
-      <div class="group-hd">${ICONS[g]||DEFAULT_ICON}<span class="group-lab">${esc(g)}</span><span class="group-count">(${groupApis.length})</span></div>
-      <div class="grid">${cards}</div>
+      <div class="group-hd">${icons[g]||DEFAULT_ICON}<span class="group-lab">${esc(g)}</span><span class="group-count">(${groupApis.length})</span></div>
+      <div class="grid">${body}</div>
     </div>`;
   }).join("");
 
@@ -111,13 +157,23 @@ function render(){
       <h1>Fannie Mae Public APIs</h1>
       <div class="stats"><span><b>${apis.length}</b> total APIs</span><span><b>${liveCount}</b> live in this connector</span>${downCount?`<span><b class="warn">${downCount}</b> unreachable</span>`:""}<span><b>${apis.length-liveCount-downCount}</b> catalog-only</span></div>
     </div>
-    <div class="search"><input type="text" id="q" placeholder="Search APIs by name, category, or description…" value="${esc(query)}" /></div>
+    <div class="controls">
+      <input type="text" id="q" placeholder="Search APIs by name, category, or description…" value="${esc(query)}" />
+      <div class="seg">
+        <button type="button" data-group="businessLine" class="${groupBy==="businessLine"?"on":""}">Business line</button>
+        <button type="button" data-group="tag" class="${groupBy==="tag"?"on":""}">Function</button>
+      </div>
+    </div>
     ${visible.length===0 ? '<div class="no-results">No APIs match your search.</div>' : sections}`;
 
   root.querySelectorAll(".card.live, .card.down").forEach(card=>{
     card.addEventListener("click", ()=>{
       ask(`Show me the ${card.dataset.name} details and let me try it.`);
     });
+  });
+
+  root.querySelectorAll(".seg button").forEach(btn=>{
+    btn.addEventListener("click", ()=>{ groupBy = btn.dataset.group; render(); });
   });
 
   const searchInput = root.querySelector("#q");
