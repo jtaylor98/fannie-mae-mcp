@@ -2,8 +2,14 @@
 <meta charset="utf-8" />
 <!--
   Fannie Mae API catalog -- overview widget. Cards for all 16 public APIs,
-  grouped by tag, with search filtering. Implemented APIs are clickable and
-  drill into the detail widget (green); others show as catalog-only (amber).
+  grouped by tag, with search filtering.
+
+  Three card states:
+    live   (green)   -- implemented and reachable
+    down   (amber)   -- implemented but Fannie Mae's gateway rejects it;
+                        statusNote explains why. Still clickable.
+    static (neutral) -- catalog entry only, never wired up. Not an error,
+                        so it no longer borrows the amber warning color.
 -->
 <style>
   /*__BRAND__*/
@@ -12,8 +18,9 @@
   #root{max-width:920px;margin:0 auto}
   .hd{padding:14px 16px 10px}
   .hd h1{font-size:14px;font-weight:700;color:var(--accent);margin:0;text-transform:uppercase;letter-spacing:.04em}
-  .stats{display:flex;gap:14px;margin-top:6px;font-size:11px;color:var(--muted)}
+  .stats{display:flex;gap:14px;margin-top:6px;font-size:11px;color:var(--muted);flex-wrap:wrap}
   .stats b{color:var(--body);font-weight:700}
+  .stats b.warn{color:var(--watch)}
   .search{margin:8px 16px 4px}
   .search input{width:100%;border:1px solid var(--slate);border-radius:6px;padding:7px 10px;font-size:12px;background:var(--paper);color:var(--body)}
   .search input:focus{outline:2px solid var(--pass);outline-offset:-1px}
@@ -26,19 +33,23 @@
   .card{border:1px solid var(--line);border-radius:7px;padding:11px 13px;background:var(--off);transition:box-shadow .12s,transform .12s}
   .card.live{border-left:3px solid var(--pass);cursor:pointer;background:var(--pass-bg);box-shadow:0 1px 2px rgba(0,0,0,.04)}
   .card.live:hover{box-shadow:0 3px 10px rgba(0,0,0,.10);transform:translateY(-1px)}
-  .card.static{border-left:3px solid var(--watch);background:var(--watch-bg)}
+  .card.down{border-left:3px solid var(--watch);cursor:pointer;background:var(--watch-bg);box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  .card.down:hover{box-shadow:0 3px 10px rgba(0,0,0,.10);transform:translateY(-1px)}
+  .card.static{border-left:3px solid var(--slate);background:var(--off)}
   .name{font-weight:700;font-size:12px;margin-bottom:3px}
   .card.static .name{color:var(--body)}
   .desc{font-size:11px;color:var(--muted);line-height:1.4}
   .badge{display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:700;padding:2px 7px;border-radius:999px;background:var(--pass);color:var(--paper);margin-top:7px}
-  .badge.static{background:transparent;color:var(--watch);border:1px solid var(--watch)}
+  .badge.down{background:var(--watch);color:var(--paper)}
+  .badge.static{background:transparent;color:var(--muted);border:1px solid var(--slate)}
+  .why{font-size:9.5px;color:var(--watch);line-height:1.4;margin-top:6px}
   .no-results{padding:20px 16px;color:var(--muted);text-align:center;font-size:12px}
 </style>
 <div id="root"><div style="padding:26px 16px;color:var(--muted);text-align:center">Loading catalog…</div></div>
 <script type="module">
 /*__EXT_APPS_BUNDLE__*/
 const { App } = globalThis.ExtApps;
-const esc=(s)=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+const esc=(s)=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
 
 const ICONS = {
   "Originating & Underwriting": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1m4 0h1m-6 4h1m4 0h1m-6 4h1m4 0h1"/></svg>',
@@ -52,6 +63,8 @@ let DATA=null, app=null, query="";
 const ctx=()=>app?.getHostContext?.()||{};
 function ask(text){ try{ app.sendMessage({role:"user",content:[{type:"text",text}]}); }catch{} }
 
+const isDown = (a)=> !!a.implemented && a.status === "unreachable";
+
 function matches(api){
   if(!query) return true;
   const q = query.toLowerCase();
@@ -63,19 +76,31 @@ function render(){
   const apis = DATA?.apis||[];
   if(apis.length===0){ root.innerHTML='<div style="padding:26px 16px;color:var(--muted);text-align:center">No APIs found.</div>'; return; }
 
-  const liveCount = apis.filter(a=>a.implemented).length;
+  const downCount = apis.filter(isDown).length;
+  const liveCount = apis.filter(a=>a.implemented && !isDown(a)).length;
   const visible = apis.filter(matches);
   const groups = [...new Set(apis.map(a=>a.tag))];
 
   const sections = groups.map(g=>{
     const groupApis = visible.filter(a=>a.tag===g);
     if(groupApis.length===0) return "";
-    const cards = groupApis.map(a=>`
-      <div class="card ${a.implemented?'live':'static'}" data-name="${esc(a.name)}">
+    const cards = groupApis.map(a=>{
+      const down = isDown(a);
+      const cls = down ? "down" : a.implemented ? "live" : "static";
+      const badge = down
+        ? '<span class="badge down">● UNREACHABLE</span>'
+        : a.implemented
+          ? '<span class="badge">● LIVE</span>'
+          : '<span class="badge static">● Catalog only</span>';
+      const why = down && a.statusNote ? `<div class="why">${esc(a.statusNote)}</div>` : "";
+      return `
+      <div class="card ${cls}" data-name="${esc(a.name)}">
         <div class="name">${esc(a.name)}</div>
         <div class="desc">${esc(a.description)}</div>
-        ${a.implemented?'<span class="badge">● LIVE</span>':'<span class="badge static">● Catalog only</span>'}
-      </div>`).join("");
+        ${badge}
+        ${why}
+      </div>`;
+    }).join("");
     return `<div class="group">
       <div class="group-hd">${ICONS[g]||DEFAULT_ICON}<span class="group-lab">${esc(g)}</span><span class="group-count">(${groupApis.length})</span></div>
       <div class="grid">${cards}</div>
@@ -84,12 +109,12 @@ function render(){
 
   root.innerHTML = `<div class="hd">
       <h1>Fannie Mae Public APIs</h1>
-      <div class="stats"><span><b>${apis.length}</b> total APIs</span><span><b>${liveCount}</b> live in this connector</span><span><b>${apis.length-liveCount}</b> catalog-only</span></div>
+      <div class="stats"><span><b>${apis.length}</b> total APIs</span><span><b>${liveCount}</b> live in this connector</span>${downCount?`<span><b class="warn">${downCount}</b> unreachable</span>`:""}<span><b>${apis.length-liveCount-downCount}</b> catalog-only</span></div>
     </div>
     <div class="search"><input type="text" id="q" placeholder="Search APIs by name, category, or description…" value="${esc(query)}" /></div>
     ${visible.length===0 ? '<div class="no-results">No APIs match your search.</div>' : sections}`;
 
-  root.querySelectorAll(".card.live").forEach(card=>{
+  root.querySelectorAll(".card.live, .card.down").forEach(card=>{
     card.addEventListener("click", ()=>{
       ask(`Show me the ${card.dataset.name} details and let me try it.`);
     });
