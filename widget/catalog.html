@@ -56,6 +56,17 @@
   .why{font-size:9.5px;color:var(--watch);line-height:1.4;margin-top:6px}
   .empty-group{border:1px dashed var(--slate);border-radius:7px;padding:11px 13px;font-size:11px;color:var(--muted);line-height:1.45;grid-column:1/-1}
   .no-results{padding:20px 16px;color:var(--muted);text-align:center;font-size:12px}
+  /* --- tap feedback (mouse + touch) --- */
+  .card.live:active,.card.down:active{transform:scale(.985)}
+  .seg button:active{opacity:.65}
+  /* --- mobile layout (scoped; desktop untouched) --- */
+  @media (max-width:480px){
+    #root{max-width:100%}
+    .grid{grid-template-columns:1fr}
+    .controls input{flex:1 1 100%}
+    .seg{width:100%}
+    .seg button{flex:1 1 0;padding:10px 8px;font-size:11px}
+  }
 </style>
 <div id="root"><div style="padding:26px 16px;color:var(--muted);text-align:center">Loading catalog…</div></div>
 <script type="module">
