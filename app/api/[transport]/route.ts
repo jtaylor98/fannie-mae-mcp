@@ -70,6 +70,19 @@ const handler = createMcpHandler(
   {
     basePath: "/api",
     verboseLogs: true,
+    onEvent: (event) => {
+      const e = event as any;
+      console.log(
+        "[mcp-event]",
+        e.type ?? "",
+        "method=" + (e.method ?? ""),
+        "status=" + (e.status ?? ""),
+        e.severity ? "severity=" + e.severity : "",
+        e.source ? "source=" + e.source : "",
+        e.error ? "error=" + String(e.error) : "",
+        e.context ? "context=" + e.context : ""
+      );
+    },
   }
 );
 
