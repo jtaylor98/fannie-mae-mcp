@@ -12,6 +12,11 @@
     kind:"itemList"           -- repeatable rows for batch POST bodies,
                                  encoded back out as
                                  "a/b/c | d/e" (pipe = item, slash = field)
+
+  Display modes: App declares inline/fullscreen/pip; the header toggle only
+  shows a control for a mode the host advertises (pip appears only where
+  supported). Handy here for pinning a live result via pip while you keep
+  chatting, or expanding a large result to fullscreen.
 -->
 <style>
   /*__BRAND__*/
@@ -21,6 +26,12 @@
   .hd{padding:12px 16px 4px}
   .hd h1{font-size:14px;font-weight:700;color:var(--accent);margin:0}
   .hd .desc{font-size:11.5px;color:var(--muted);margin-top:4px;line-height:1.4}
+  .hd-top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+  .disp{display:inline-flex;gap:5px;flex:0 0 auto}
+  .disp-btn{display:inline-flex;align-items:center;gap:5px;font-family:inherit;font-size:10.5px;font-weight:700;color:var(--muted);background:var(--paper);border:1px solid var(--slate);border-radius:6px;padding:5px 9px;cursor:pointer;line-height:1}
+  .disp-btn:hover{color:var(--body);border-color:var(--muted)}
+  .disp-btn:active{opacity:.65}
+  .disp-btn > span[aria-hidden]{font-size:12px}
   .op{border:1px solid var(--line);border-radius:6px;padding:10px 12px;margin:8px 16px}
   .op-lab{font-weight:700;font-size:12px;margin-bottom:6px;display:flex;align-items:center;gap:6px}
   .verb{font-size:9px;font-weight:700;letter-spacing:.04em;padding:2px 5px;border-radius:3px;border:1px solid var(--line);color:var(--muted);background:var(--off)}
@@ -56,6 +67,7 @@
     .op-params input[data-param]{width:100%}
     .run-btn{width:100%;padding:10px;font-size:12px}
     .add-row,.del-row{padding:7px 11px}
+    .disp-lab{display:none}
   }
 </style>
 <div id="root"><div class="empty">Loading API details…</div></div>
@@ -67,6 +79,27 @@ const esc=(s)=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").r
 let DATA=null, app=null;
 const ctx=()=>app?.getHostContext?.()||{};
 function ask(text){ try{ app.sendMessage({role:"user",content:[{type:"text",text}]}); }catch{} }
+
+// --- display-mode toggle ---------------------------------------------------
+// Only modes the host advertises get a button, so pip renders only where the
+// host actually supports it (the intersection of what we declare + host offers).
+const DISPLAY_META={fullscreen:["⛶","Full screen"],pip:["◲","Pop out"],inline:["▭","Collapse"]};
+function displayControlsHtml(){
+  const c=ctx();
+  const avail=Array.isArray(c.availableDisplayModes)?c.availableDisplayModes:[];
+  const cur=c.displayMode||"inline";
+  const btns=["fullscreen","pip","inline"]
+    .filter(m=>avail.includes(m)&&m!==cur)
+    .map(m=>{const[g,l]=DISPLAY_META[m];
+      return `<button type="button" class="disp-btn" data-mode="${m}" title="${esc(l)}"><span aria-hidden="true">${g}</span><span class="disp-lab">${esc(l)}</span></button>`;})
+    .join("");
+  return btns?`<div class="disp">${btns}</div>`:"";
+}
+function wireDisplay(scope){
+  (scope||document).querySelectorAll(".disp-btn").forEach(b=>{
+    b.addEventListener("click",()=>{ try{ app.requestDisplayMode&&app.requestDisplayMode(b.dataset.mode); }catch(e){ console.warn("[fnma] requestDisplayMode failed:",e); } });
+  });
+}
 
 // "Total | Total/Residential" -> [["Total"],["Total","Residential"]]
 function splitExample(example){
@@ -119,10 +152,11 @@ function render(){
   const root=document.getElementById("root");
   if(!DATA){ root.innerHTML='<div class="empty">No API selected.</div>'; return; }
 
-  const head = `<div class="hd"><h1>${esc(DATA.name)}</h1><div class="desc">${esc(DATA.description)}</div></div>`;
+  const head = `<div class="hd"><div class="hd-top"><h1>${esc(DATA.name)}</h1>${displayControlsHtml()}</div><div class="desc">${esc(DATA.description)}</div></div>`;
 
   if(!DATA.implemented){
     root.innerHTML = head + `<div class="not-implemented">This API isn't wired up to live data in this connector yet -- catalog entry only.</div>`;
+    wireDisplay(root);
     return;
   }
 
@@ -184,14 +218,17 @@ function render(){
       ask(`Run the ${op.label} operation on ${DATA.name}${paramText}.`);
     });
   });
+
+  wireDisplay(root);
 }
 
 (async()=>{
-  app=new App({name:"FnmaApiDetail",version:"1.0.0"},{availableDisplayModes:["inline"]},{autoResize:true});
+  app=new App({name:"FnmaApiDetail",version:"1.0.0"},{availableDisplayModes:["inline","fullscreen","pip"]},{autoResize:true});
   const theme=()=>{try{document.documentElement.classList.toggle("dark",ctx().theme==="dark")}catch{}};
   app.ontoolresult=(result)=>{ try{ DATA=result?.structuredContent ?? JSON.parse(result.content[0].text); }catch{ DATA=null; } theme(); render(); };
   app.onhostcontextchanged=()=>{ theme(); render(); };
   await app.connect();
+  console.log("[fnma api-detail] host availableDisplayModes:", ctx().availableDisplayModes, "| current:", ctx().displayMode);
   theme(); render();
 })();
 </script>
