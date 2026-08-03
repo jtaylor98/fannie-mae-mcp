@@ -1,27 +1,18 @@
 <!doctype html>
 <meta charset="utf-8" />
 <!--
-  Fannie Mae API catalog -- overview widget.
+  Fannie Mae API catalog -- self-contained app (list + detail views).
 
-  Grouping is switchable between two orthogonal dimensions:
-    businessLine -- Single Family / Multifamily / Both / Market & Reference
-    tag          -- Pricing & Execution / Originating & Underwriting / Servicing
+  List view: all APIs as grouped cards (by business line or function).
+  Detail view: clicking a live/down card opens that API IN-PLACE (the catalog
+  already carries each API's operations in its data, so navigation needs no
+  server call and no Claude prompt). Operations Run DIRECTLY via the ext-apps
+  bridge (app.callServerTool "call_fnma_api") and render the result inline --
+  no Claude round-trip, no Enter. A Back button returns to the list.
 
-  These were previously conflated: "Single Family" sat in the tag list
-  alongside three functional categories, and was applied to only 2 of the 6
-  single-family APIs. They are now separate axes and each card shows the one
-  it is not currently grouped by.
-
-  Card states:
-    live   (green)   -- implemented and reachable
-    down   (amber)   -- implemented but Fannie Mae's gateway rejects it
-    static (neutral) -- catalog entry only
-
-  Display modes:
-    The App declares inline/fullscreen/pip. The header toggle only renders a
-    control for a mode the HOST advertises (hostContext.availableDisplayModes),
-    so pip shows up only where the host supports it. onhostcontextchanged
-    re-renders, keeping the buttons in sync with the active mode.
+  Card states: live (green), down (amber, upstream 404), static (catalog only).
+  Display modes: App declares inline/fullscreen/pip; header toggle only shows
+  a control for a mode the host advertises.
 -->
 <style>
   /*__BRAND__*/
@@ -31,9 +22,16 @@
   .hd{padding:14px 16px 10px}
   .hd h1{font-size:14px;font-weight:700;color:var(--accent);margin:0;text-transform:uppercase;letter-spacing:.04em}
   .hd-top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+  .hd-left{display:flex;align-items:center;gap:10px;min-width:0}
+  .detail-h1{font-size:14px;font-weight:700;color:var(--accent);margin:0;line-height:1.2}
+  .back-btn{border:1px solid var(--slate);background:var(--paper);color:var(--muted);border-radius:6px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit;flex:0 0 auto}
+  .back-btn:hover{color:var(--body);border-color:var(--muted)}
+  .back-btn:active{opacity:.65}
   .stats{display:flex;gap:14px;margin-top:6px;font-size:11px;color:var(--muted);flex-wrap:wrap}
   .stats b{color:var(--body);font-weight:700}
   .stats b.warn{color:var(--watch)}
+  .desc{font-size:11px;color:var(--muted);line-height:1.4}
+  .hd .desc{margin-top:4px}
   .disp{display:inline-flex;gap:5px;flex:0 0 auto}
   .disp-btn{display:inline-flex;align-items:center;gap:5px;font-family:inherit;font-size:10.5px;font-weight:700;color:var(--muted);background:var(--paper);border:1px solid var(--slate);border-radius:6px;padding:5px 9px;cursor:pointer;line-height:1}
   .disp-btn:hover{color:var(--body);border-color:var(--muted)}
@@ -59,7 +57,6 @@
   .card.down:hover{box-shadow:0 3px 10px rgba(0,0,0,.10);transform:translateY(-1px)}
   .card.static{border-left:3px solid var(--slate);background:var(--off)}
   .name{font-weight:700;font-size:12px;margin-bottom:3px}
-  .desc{font-size:11px;color:var(--muted);line-height:1.4}
   .meta{font-size:9px;color:var(--muted);margin-top:6px;text-transform:uppercase;letter-spacing:.03em}
   .badges{display:flex;gap:5px;flex-wrap:wrap;align-items:center;margin-top:7px}
   .badge{display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:700;padding:2px 7px;border-radius:999px;background:var(--pass);color:var(--paper)}
@@ -68,10 +65,38 @@
   .why{font-size:9.5px;color:var(--watch);line-height:1.4;margin-top:6px}
   .empty-group{border:1px dashed var(--slate);border-radius:7px;padding:11px 13px;font-size:11px;color:var(--muted);line-height:1.45;grid-column:1/-1}
   .no-results{padding:20px 16px;color:var(--muted);text-align:center;font-size:12px}
-  /* --- tap feedback (mouse + touch) --- */
+  /* --- detail view (ported from api-detail) --- */
+  .op{border:1px solid var(--line);border-radius:6px;padding:10px 12px;margin:8px 16px}
+  .op-lab{font-weight:700;font-size:12px;margin-bottom:6px;display:flex;align-items:center;gap:6px}
+  .verb{font-size:9px;font-weight:700;letter-spacing:.04em;padding:2px 5px;border-radius:3px;border:1px solid var(--line);color:var(--muted);background:var(--off)}
+  .verb.post{color:var(--paper);background:var(--accent);border-color:var(--accent)}
+  .op-note{font-size:10.5px;color:var(--muted);line-height:1.4;margin:-2px 0 7px}
+  .op-params{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px}
+  .op-params input{border:1px solid var(--slate);border-radius:4px;padding:4px 7px;font-size:11.5px;background:var(--paper);color:var(--body);width:120px}
+  .op-params label{font-size:10px;color:var(--muted);display:block;margin-bottom:2px}
+  .opt{opacity:.7;font-style:italic}
+  .hint{font-size:9.5px;color:var(--muted);margin-top:3px;line-height:1.35}
+  .ilist{flex:1 1 100%;min-width:0}
+  .ilist-row{display:flex;gap:5px;align-items:center;margin-bottom:4px}
+  .ilist-row input{width:auto;flex:1 1 0;min-width:0}
+  .del-row{border:1px solid var(--slate);border-radius:4px;background:var(--paper);color:var(--muted);cursor:pointer;font-size:12px;line-height:1;padding:4px 7px;flex:0 0 auto}
+  .del-row:hover{color:var(--body)}
+  .add-row{border:1px dashed var(--slate);border-radius:4px;background:transparent;color:var(--muted);cursor:pointer;font-size:10.5px;padding:3px 9px;margin-top:2px}
+  .add-row:hover{color:var(--accent);border-color:var(--accent)}
+  .run-btn{border:none;border-radius:4px;padding:5px 12px;font-size:11px;font-weight:700;background:var(--accent);color:var(--paper);cursor:pointer}
+  .run-btn:hover{opacity:.85}
+  .run-btn:disabled{opacity:.6;cursor:default}
+  .result{margin-top:8px;background:var(--off);border-radius:4px;padding:8px;font-size:11px;max-height:220px;overflow:auto;white-space:pre-wrap;font-family:ui-monospace,monospace}
+  .result.err{color:var(--watch)}
+  .not-implemented{padding:12px 16px;color:var(--muted);font-size:12px}
+  .down-banner{margin:8px 16px;border:1px solid var(--watch);background:var(--watch-bg);border-radius:6px;padding:9px 11px;font-size:11px;color:var(--watch);line-height:1.45}
+  .down-banner b{display:block;font-size:11px;margin-bottom:3px}
+  /* --- tap feedback --- */
   .card.live:active,.card.down:active{transform:scale(.985)}
   .seg button:active{opacity:.65}
-  /* --- mobile layout (scoped; desktop untouched) --- */
+  .run-btn:active{transform:scale(.97);opacity:.9}
+  .add-row:active,.del-row:active{background:var(--off)}
+  /* --- mobile --- */
   @media (max-width:480px){
     #root{max-width:100%}
     .grid{grid-template-columns:1fr}
@@ -79,6 +104,11 @@
     .seg{width:100%}
     .seg button{flex:1 1 0;padding:10px 8px;font-size:11px}
     .disp-lab{display:none}
+    .op-params{gap:8px}
+    .op-params > div{flex:1 1 100%}
+    .op-params input[data-param]{width:100%}
+    .run-btn{width:100%;padding:10px;font-size:12px}
+    .add-row,.del-row{padding:7px 11px}
   }
 </style>
 <div id="root"><div style="padding:26px 16px;color:var(--muted);text-align:center">Loading catalog…</div></div>
@@ -101,20 +131,16 @@ const BL_ICONS = {
 };
 const DEFAULT_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg>';
 
-// Shown in place of the grid when a business line has no APIs. The absence is
-// the answer to "separate multifamily from single family", so say it out loud
-// rather than silently hiding the group.
 const EMPTY_GROUP_NOTE = {
   "Multifamily": "No API in this catalog is multifamily-only. Pool Prefix is the only one that covers multifamily at all, and it covers both business lines — you will find it under Both.",
 };
 
 let DATA=null, app=null, query="", groupBy="businessLine";
+let view="list", selectedName=null;
+const RESULTS={};
 const ctx=()=>app?.getHostContext?.()||{};
-function ask(text){ try{ app.sendMessage({role:"user",content:[{type:"text",text}]}); }catch{} }
 
 // --- display-mode toggle ---------------------------------------------------
-// glyph + label per mode. Only modes the HOST advertises get a button, so pip
-// renders only where the host actually supports it (the intersection rule).
 const DISPLAY_META={fullscreen:["⛶","Full screen"],pip:["◲","Pop out"],inline:["▭","Collapse"]};
 function displayControlsHtml(){
   const c=ctx();
@@ -133,33 +159,95 @@ function wireDisplay(scope){
   });
 }
 
+// --- detail-view helpers ---------------------------------------------------
+function splitExample(example){
+  return String(example==null?"":example)
+    .split("|").map(s=>s.trim()).filter(Boolean)
+    .map(item=>item.split("/").map(p=>p.trim()));
+}
+function itemRowHtml(fields, values){
+  const inputs = fields.map((f,i)=>
+    `<input type="text" data-field="${esc(f)}" placeholder="${esc(values && values[i] ? values[i] : f)}" />`
+  ).join("");
+  return `<div class="ilist-row">${inputs}<button class="del-row" type="button" title="Remove row">&times;</button></div>`;
+}
+function paramControl(p){
+  if(p.kind === "itemList"){
+    const fields = p.fields || [];
+    const rows = splitExample(p.example).map(vals=>itemRowHtml(fields, vals)).join("")
+      || itemRowHtml(fields, null);
+    return `<div class="ilist" data-param="${esc(p.name)}" data-fields="${esc(fields.join(","))}">
+      <label>${esc(p.name)} <span class="opt">(${esc(fields.join(" / "))})</span></label>
+      <div class="ilist-rows">${rows}</div>
+      <button class="add-row" type="button">+ Add row</button>
+      ${p.hint ? `<div class="hint">${esc(p.hint)}</div>` : ""}
+    </div>`;
+  }
+  return `<div>
+    <label>${esc(p.name)}${p.optional ? ' <span class="opt">optional</span>' : ""}</label>
+    <input type="text" data-param="${esc(p.name)}" placeholder="${esc(String(p.example))}" />
+    ${p.hint ? `<div class="hint">${esc(p.hint)}</div>` : ""}
+  </div>`;
+}
+function readItemList(listEl, fields){
+  return [...listEl.querySelectorAll(".ilist-row")].map(row=>{
+    const vals = fields.map(f=>{
+      const input = row.querySelector(`input[data-field="${f}"]`);
+      return ((input && (input.value || input.placeholder)) || "").trim();
+    });
+    while(vals.length && !vals[vals.length-1]) vals.pop();
+    return vals.join("/");
+  }).filter(Boolean).join(" | ");
+}
+function collectArgs(op, opEl, entry){
+  const args = { api_name: entry.name, operation_id: op.id };
+  (op.params||[]).forEach(p=>{
+    if(p.kind === "itemList"){
+      const listEl = opEl.querySelector(`.ilist[data-param="${p.name}"]`);
+      const fields = (listEl.dataset.fields||"").split(",").filter(Boolean);
+      const val = readItemList(listEl, fields) || p.example;
+      if(val) args[p.name] = val;
+    } else {
+      const input = opEl.querySelector(`input[data-param="${p.name}"]`);
+      const val = (input?.value || (p.optional ? "" : p.example));
+      if(val) args[p.name] = val;
+    }
+  });
+  return args;
+}
+
+// --- list-view helpers -----------------------------------------------------
 const isDown = (a)=> !!a.implemented && a.status === "unreachable";
 const keyOf = (a)=> groupBy === "businessLine" ? (a.businessLine || "Market & Reference") : a.tag;
 const otherOf = (a)=> groupBy === "businessLine" ? a.tag : (a.businessLine || "Market & Reference");
-
 function matches(api){
   if(!query) return true;
   const q = query.toLowerCase();
   return [api.name, api.description, api.tag, api.businessLine||""]
     .some(v => String(v).toLowerCase().includes(q));
 }
-
 function groupOrder(apis){
   if(groupBy === "businessLine"){
     const declared = DATA?.businessLineOrder || [];
     const seen = [...new Set(apis.map(keyOf))];
-    // declared order first, then anything unexpected, so a new business line
-    // added server-side still renders instead of vanishing
     return [...declared, ...seen.filter(k=>!declared.includes(k))];
   }
   return [...new Set(apis.map(keyOf))];
 }
+const selectedEntry=()=> (DATA?.apis||[]).find(a=>a.name===selectedName) || null;
 
+// --- render dispatch -------------------------------------------------------
 function render(){
   const root=document.getElementById("root");
   const apis = DATA?.apis||[];
   if(apis.length===0){ root.innerHTML='<div style="padding:26px 16px;color:var(--muted);text-align:center">No APIs found.</div>'; return; }
+  if(view==="detail" && selectedEntry()) renderDetail();
+  else { view="list"; renderList(); }
+}
 
+function renderList(){
+  const root=document.getElementById("root");
+  const apis = DATA?.apis||[];
   const downCount = apis.filter(isDown).length;
   const liveCount = apis.filter(a=>a.implemented && !isDown(a)).length;
   const visible = apis.filter(matches);
@@ -167,10 +255,8 @@ function render(){
 
   const sections = groupOrder(apis).map(g=>{
     const groupApis = visible.filter(a=>keyOf(a)===g);
-    // keep declared-but-empty business lines visible when not searching
     const showEmpty = groupApis.length===0 && !query && groupBy==="businessLine" && EMPTY_GROUP_NOTE[g];
     if(groupApis.length===0 && !showEmpty) return "";
-
     const body = showEmpty
       ? `<div class="empty-group">${esc(EMPTY_GROUP_NOTE[g])}</div>`
       : groupApis.map(a=>{
@@ -191,7 +277,6 @@ function render(){
             ${why}
           </div>`;
         }).join("");
-
     return `<div class="group">
       <div class="group-hd">${icons[g]||DEFAULT_ICON}<span class="group-lab">${esc(g)}</span><span class="group-count">(${groupApis.length})</span></div>
       <div class="grid">${body}</div>
@@ -212,35 +297,112 @@ function render(){
     ${visible.length===0 ? '<div class="no-results">No APIs match your search.</div>' : sections}`;
 
   root.querySelectorAll(".card.live, .card.down").forEach(card=>{
-    card.addEventListener("click", ()=>{
-      ask(`Show me the ${card.dataset.name} details and let me try it.`);
-    });
+    card.addEventListener("click", ()=>{ selectedName = card.dataset.name; view = "detail"; render(); });
   });
-
   root.querySelectorAll(".seg button").forEach(btn=>{
     btn.addEventListener("click", ()=>{ groupBy = btn.dataset.group; render(); });
   });
-
   const searchInput = root.querySelector("#q");
   if(searchInput){
     searchInput.addEventListener("input", (e)=>{
       query = e.target.value;
       render();
       const freshInput = document.getElementById("q");
-      if(freshInput){
-        freshInput.focus();
-        freshInput.setSelectionRange(query.length, query.length);
-      }
+      if(freshInput){ freshInput.focus(); freshInput.setSelectionRange(query.length, query.length); }
     });
   }
-
   wireDisplay(root);
+}
+
+function renderDetail(){
+  const root=document.getElementById("root");
+  const entry=selectedEntry();
+  if(!entry){ view="list"; renderList(); return; }
+
+  const head = `<div class="hd"><div class="hd-top">
+      <div class="hd-left"><button type="button" class="back-btn">← All APIs</button><div class="detail-h1">${esc(entry.name)}</div></div>
+      ${displayControlsHtml()}
+    </div><div class="desc">${esc(entry.description)}</div></div>`;
+
+  if(!entry.implemented){
+    root.innerHTML = head + `<div class="not-implemented">This API isn't wired up to live data in this connector yet -- catalog entry only.</div>`;
+    wireBack(root); wireDisplay(root); return;
+  }
+
+  const downBanner = entry.status === "unreachable"
+    ? `<div class="down-banner"><b>Unreachable at Fannie Mae</b>${esc(entry.statusNote || "This API is not currently responding.")}</div>`
+    : "";
+
+  const ops = (entry.operations||[]).map(op=>{
+    const method = (op.method || "GET").toUpperCase();
+    const verb = `<span class="verb ${method === "POST" ? "post" : ""}">${esc(method)}</span>`;
+    const inputs = (op.params||[]).map(paramControl).join("");
+    const note = op.note ? `<div class="op-note">${esc(op.note)}</div>` : "";
+    const data = RESULTS[`${entry.name}::${op.id}`];
+    const isErr = data && typeof data === "object" && "error" in data;
+    const resultBlock = (data!==undefined)
+      ? `<div class="result${isErr ? " err" : ""}">${esc(isErr ? data.error : JSON.stringify(data, null, 2))}</div>`
+      : "";
+    return `<div class="op" data-op="${esc(op.id)}">
+      <div class="op-lab">${verb}${esc(op.label)}</div>
+      ${note}
+      <div class="op-params">${inputs}</div>
+      <button class="run-btn" type="button">Run</button>
+      ${resultBlock}
+    </div>`;
+  }).join("");
+
+  root.innerHTML = head + downBanner + ops;
+
+  root.querySelectorAll(".op").forEach(opEl=>{
+    const op = (entry.operations||[]).find(o=>o.id===opEl.dataset.op);
+
+    opEl.querySelectorAll(".ilist").forEach(listEl=>{
+      const fields = (listEl.dataset.fields||"").split(",").filter(Boolean);
+      const rowsEl = listEl.querySelector(".ilist-rows");
+      listEl.querySelector(".add-row").addEventListener("click", ()=>{
+        rowsEl.insertAdjacentHTML("beforeend", itemRowHtml(fields, null));
+      });
+      rowsEl.addEventListener("click", (e)=>{
+        const btn = e.target.closest(".del-row");
+        if(!btn) return;
+        if(rowsEl.querySelectorAll(".ilist-row").length > 1) btn.parentElement.remove();
+      });
+    });
+
+    opEl.querySelector(".run-btn").addEventListener("click", async ()=>{
+      const args = collectArgs(op, opEl, entry);
+      const btn = opEl.querySelector(".run-btn");
+      btn.disabled = true; btn.textContent = "Running…";
+      try{
+        const result = await app.callServerTool({ name: "call_fnma_api", arguments: args });
+        let data;
+        if(result && result.isError){
+          data = { error: (result.content && result.content[0] && result.content[0].text) || "Tool returned an error." };
+        } else {
+          const text = result && result.content && result.content[0] && result.content[0].text;
+          try{ data = JSON.parse(text); }catch{ data = text ? { raw: text } : (result && result.structuredContent) || {}; }
+        }
+        RESULTS[`${entry.name}::${op.id}`] = data;
+      }catch(e){
+        RESULTS[`${entry.name}::${op.id}`] = { error: String(e && e.message ? e.message : e) };
+      }
+      renderDetail();
+    });
+  });
+
+  wireBack(root); wireDisplay(root);
+}
+
+function wireBack(scope){
+  const b = scope.querySelector(".back-btn");
+  if(b) b.addEventListener("click", ()=>{ view="list"; selectedName=null; render(); });
 }
 
 (async()=>{
   app=new App({name:"FnmaCatalog",version:"1.0.0"},{availableDisplayModes:["inline","fullscreen","pip"]},{autoResize:true});
   const theme=()=>{try{document.documentElement.classList.toggle("dark",ctx().theme==="dark")}catch{}};
-  app.ontoolresult=(result)=>{ try{ DATA=result?.structuredContent ?? JSON.parse(result.content[0].text); }catch{ DATA=null; } theme(); render(); };
+  app.ontoolresult=(result)=>{ try{ DATA=result?.structuredContent ?? JSON.parse(result.content[0].text); }catch{ DATA=null; } view="list"; selectedName=null; theme(); render(); };
   app.onhostcontextchanged=()=>{ theme(); render(); };
   await app.connect();
   console.log("[fnma catalog] host availableDisplayModes:", ctx().availableDisplayModes, "| current:", ctx().displayMode);
