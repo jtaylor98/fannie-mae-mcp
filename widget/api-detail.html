@@ -3,9 +3,9 @@
 <!--
   Fannie Mae API detail -- per-API drill-down widget. Shows description +
   available operations. For each operation, an inline form lets you fill
-  params and run it; clicking Run sends a chat message asking Claude to
-  execute that specific operation, which re-renders this same widget with
-  the live result included.
+  params and Run it. Run calls the server tool DIRECTLY via the ext-apps
+  bridge (app.callServerTool) and renders the result in place -- no Claude
+  prompt, no Enter. (Previously it used app.sendMessage, which asked Claude.)
 
   Params come in two shapes:
     kind:"scalar"   (default) -- one text input
@@ -14,9 +14,7 @@
                                  "a/b/c | d/e" (pipe = item, slash = field)
 
   Display modes: App declares inline/fullscreen/pip; the header toggle only
-  shows a control for a mode the host advertises (pip appears only where
-  supported). Handy here for pinning a live result via pip while you keep
-  chatting, or expanding a large result to fullscreen.
+  shows a control for a mode the host advertises.
 -->
 <style>
   /*__BRAND__*/
@@ -51,7 +49,9 @@
   .add-row:hover{color:var(--accent);border-color:var(--accent)}
   .run-btn{border:none;border-radius:4px;padding:5px 12px;font-size:11px;font-weight:700;background:var(--accent);color:var(--paper);cursor:pointer}
   .run-btn:hover{opacity:.85}
+  .run-btn:disabled{opacity:.6;cursor:default}
   .result{margin-top:8px;background:var(--off);border-radius:4px;padding:8px;font-size:11px;max-height:220px;overflow:auto;white-space:pre-wrap;font-family:ui-monospace,monospace}
+  .result.err{color:var(--watch)}
   .empty{padding:26px 16px;color:var(--muted);text-align:center}
   .not-implemented{padding:12px 16px;color:var(--muted);font-size:12px}
   .down-banner{margin:8px 16px;border:1px solid var(--watch);background:var(--watch-bg);border-radius:6px;padding:9px 11px;font-size:11px;color:var(--watch);line-height:1.45}
@@ -78,11 +78,8 @@ const esc=(s)=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").r
 
 let DATA=null, app=null;
 const ctx=()=>app?.getHostContext?.()||{};
-function ask(text){ try{ app.sendMessage({role:"user",content:[{type:"text",text}]}); }catch{} }
 
 // --- display-mode toggle ---------------------------------------------------
-// Only modes the host advertises get a button, so pip renders only where the
-// host actually supports it (the intersection of what we declare + host offers).
 const DISPLAY_META={fullscreen:["⛶","Full screen"],pip:["◲","Pop out"],inline:["▭","Collapse"]};
 function displayControlsHtml(){
   const c=ctx();
@@ -142,10 +139,27 @@ function readItemList(listEl, fields){
       const input = row.querySelector(`input[data-field="${f}"]`);
       return ((input && (input.value || input.placeholder)) || "").trim();
     });
-    // drop trailing blanks so a section-only row stays section-only
     while(vals.length && !vals[vals.length-1]) vals.pop();
     return vals.join("/");
   }).filter(Boolean).join(" | ");
+}
+
+// Build the argument object call_fnma_api expects from an operation's inputs.
+function collectArgs(op, opEl){
+  const args = { api_name: DATA.name, operation_id: op.id };
+  (op.params||[]).forEach(p=>{
+    if(p.kind === "itemList"){
+      const listEl = opEl.querySelector(`.ilist[data-param="${p.name}"]`);
+      const fields = (listEl.dataset.fields||"").split(",").filter(Boolean);
+      const val = readItemList(listEl, fields) || p.example;
+      if(val) args[p.name] = val;
+    } else {
+      const input = opEl.querySelector(`input[data-param="${p.name}"]`);
+      const val = (input?.value || (p.optional ? "" : p.example));
+      if(val) args[p.name] = val;
+    }
+  });
+  return args;
 }
 
 function render(){
@@ -160,8 +174,6 @@ function render(){
     return;
   }
 
-  // Implemented, but Fannie Mae's gateway rejects it. Operations still render
-  // so the shape stays visible, but Run will fail until it's fixed upstream.
   const downBanner = DATA.status === "unreachable"
     ? `<div class="down-banner"><b>Unreachable at Fannie Mae</b>${esc(DATA.statusNote || "This API is not currently responding.")}</div>`
     : "";
@@ -171,8 +183,10 @@ function render(){
     const verb = `<span class="verb ${method === "POST" ? "post" : ""}">${esc(method)}</span>`;
     const inputs = (op.params||[]).map(paramControl).join("");
     const note = op.note ? `<div class="op-note">${esc(op.note)}</div>` : "";
-    const resultBlock = (DATA.lastResult && DATA.lastResult.operationId===op.id)
-      ? `<div class="result">${esc(JSON.stringify(DATA.lastResult.data, null, 2))}</div>`
+    const lr = (DATA.lastResult && DATA.lastResult.operationId===op.id) ? DATA.lastResult : null;
+    const isErr = lr && lr.data && typeof lr.data === "object" && "error" in lr.data;
+    const resultBlock = lr
+      ? `<div class="result${isErr ? " err" : ""}">${esc(isErr ? lr.data.error : JSON.stringify(lr.data, null, 2))}</div>`
       : "";
     return `<div class="op" data-op="${esc(op.id)}">
       <div class="op-lab">${verb}${esc(op.label)}</div>
@@ -202,20 +216,26 @@ function render(){
       });
     });
 
-    opEl.querySelector(".run-btn").addEventListener("click", ()=>{
-      const paramParts = (op.params||[]).map(p=>{
-        if(p.kind === "itemList"){
-          const listEl = opEl.querySelector(`.ilist[data-param="${p.name}"]`);
-          const fields = (listEl.dataset.fields||"").split(",").filter(Boolean);
-          const val = readItemList(listEl, fields) || p.example;
-          return `${p.name}="${val}"`;
+    // Run the operation DIRECTLY via the ext-apps bridge -- calls the server
+    // tool and renders the result in place. No Claude prompt, no Enter.
+    opEl.querySelector(".run-btn").addEventListener("click", async ()=>{
+      const args = collectArgs(op, opEl);
+      const btn = opEl.querySelector(".run-btn");
+      btn.disabled = true; btn.textContent = "Running…";
+      try{
+        const result = await app.callServerTool({ name: "call_fnma_api", arguments: args });
+        let data;
+        if(result && result.isError){
+          data = { error: (result.content && result.content[0] && result.content[0].text) || "Tool returned an error." };
+        } else {
+          const text = result && result.content && result.content[0] && result.content[0].text;
+          try{ data = JSON.parse(text); }catch{ data = text ? { raw: text } : (result && result.structuredContent) || {}; }
         }
-        const input = opEl.querySelector(`input[data-param="${p.name}"]`);
-        const val = (input?.value || (p.optional ? "" : p.example));
-        return val ? `${p.name}=${val}` : "";
-      }).filter(Boolean);
-      const paramText = paramParts.length ? ` with ${paramParts.join(", ")}` : "";
-      ask(`Run the ${op.label} operation on ${DATA.name}${paramText}.`);
+        DATA.lastResult = { operationId: op.id, data };
+      }catch(e){
+        DATA.lastResult = { operationId: op.id, data: { error: String(e && e.message ? e.message : e) } };
+      }
+      render();
     });
   });
 
