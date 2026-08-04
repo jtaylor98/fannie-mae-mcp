@@ -10,6 +10,10 @@
   bridge (app.callServerTool "call_fnma_api") and render the result inline --
   no Claude round-trip, no Enter. A Back button returns to the list.
 
+  Run results are passed through renderApiResult(): a reusable layer that picks
+  a status card / detail card / table [+ SVG chart] / JSON fallback by shape,
+  with the full raw JSON kept under a collapsible "View raw response".
+
   Card states: live (green), down (amber, upstream 404), static (catalog only).
   Display modes: App declares inline/fullscreen/pip; header toggle only shows
   a control for a mode the host advertises.
@@ -91,6 +95,43 @@
   .not-implemented{padding:12px 16px;color:var(--muted);font-size:12px}
   .down-banner{margin:8px 16px;border:1px solid var(--watch);background:var(--watch-bg);border-radius:6px;padding:9px 11px;font-size:11px;color:var(--watch);line-height:1.45}
   .down-banner b{display:block;font-size:11px;margin-bottom:3px}
+  /* --- API result renderer --- */
+  .rr-result{margin-top:8px}
+  .rr{margin-bottom:8px}
+  .rr:last-child{margin-bottom:0}
+  .rr-status{border:1px solid var(--line);border-radius:6px;background:var(--off);padding:11px 12px}
+  .rr-status-hd{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  .rr-badge{font-size:10px;font-weight:700;padding:3px 8px;border-radius:999px;background:var(--slate);color:var(--paper);letter-spacing:.02em;text-transform:capitalize}
+  .rr-badge.ok{background:var(--pass);color:var(--paper)}
+  .rr-status-sub{font-size:12px;font-weight:700;color:var(--body)}
+  .rr-kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:11.5px;align-items:baseline}
+  .rr-detail .rr-kv{grid-template-columns:minmax(120px,auto) 1fr;gap:6px 14px;font-size:12px}
+  .rr-k{color:var(--muted);white-space:nowrap}
+  .rr-v{color:var(--body);min-width:0;overflow-wrap:anywhere}
+  .rr-mono{font-family:ui-monospace,monospace;font-size:10.5px}
+  .rr-actions{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+  .rr-btn{display:inline-flex;align-items:center;gap:4px;font-family:inherit;font-size:11px;font-weight:700;text-decoration:none;padding:5px 11px;border-radius:6px;background:var(--accent);color:var(--paper);border:1px solid var(--accent);cursor:pointer}
+  .rr-btn:hover{opacity:.9}
+  .rr-btn.ghost{background:transparent;color:var(--muted);border-color:var(--slate)}
+  .rr-btn.ghost:hover{color:var(--body);border-color:var(--muted)}
+  .rr-mini{font-family:inherit;font-size:9.5px;font-weight:700;padding:2px 6px;border-radius:4px;border:1px solid var(--slate);background:var(--paper);color:var(--muted);cursor:pointer}
+  .rr-mini:hover{color:var(--body);border-color:var(--muted)}
+  .rr-tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:6px}
+  .rr-table{border-collapse:collapse;width:100%;font-size:11px}
+  .rr-table th,.rr-table td{padding:6px 9px;text-align:left;white-space:nowrap;border-bottom:1px solid var(--line)}
+  .rr-table thead th{background:var(--off);color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.03em;cursor:pointer;user-select:none;position:sticky;top:0}
+  .rr-table thead th:hover{color:var(--body)}
+  .rr-table tbody tr:last-child td{border-bottom:none}
+  .rr-table tbody tr:hover{background:var(--off)}
+  .rr-note{font-size:10px;color:var(--muted);margin-top:5px}
+  .rr-chart-t{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:2px}
+  .rr-svg{width:100%;height:auto;max-height:200px;display:block}
+  .rr-axis{font-size:8px;fill:var(--muted)}
+  .rr-axisline{stroke:var(--line);stroke-width:1}
+  .rr-raw{margin-top:8px}
+  .rr-raw>summary{font-size:10.5px;color:var(--muted);cursor:pointer;user-select:none;padding:2px 0}
+  .rr-raw>summary:hover{color:var(--body)}
+  .rr-pre{margin:6px 0 0;background:var(--off);border-radius:4px;padding:8px;font-size:10.5px;max-height:240px;overflow:auto;white-space:pre-wrap;font-family:ui-monospace,monospace;color:var(--body)}
   /* --- tap feedback --- */
   .card.live:active,.card.down:active{transform:scale(.985)}
   .seg button:active{opacity:.65}
@@ -137,7 +178,7 @@ const EMPTY_GROUP_NOTE = {
 
 let DATA=null, app=null, query="", groupBy="businessLine";
 let view="list", selectedName=null;
-const RESULTS={};
+const RESULTS={};   // `${apiName}::${operationId}` -> data (persists across navigation)
 const ctx=()=>app?.getHostContext?.()||{};
 
 // --- display-mode toggle ---------------------------------------------------
@@ -214,6 +255,205 @@ function collectArgs(op, opEl, entry){
     }
   });
   return args;
+}
+
+// --- reusable API-result renderer ------------------------------------------
+// Inspects a run result and renders the most fitting view (status card / detail
+// card / table [+ chart] / JSON fallback) above a collapsible raw response.
+// Auto-detection is the default; API_RENDER_CONFIG overrides per operation id.
+const API_RENDER_CONFIG = {
+  getCasCurrentReportingPeriod: { type: "status" },
+  getCirtCurrentReportingPeriod: { type: "status" },
+  getCasProgramToDate: { type: "status" },
+  getCirtProgramToDate: { type: "status" },
+  getRplPerformanceFile: { type: "status" },
+  getRplLoanDetailFile: { type: "status" },
+  getPrimaryLphDataset: { type: "status" },
+  getAllHarpDataset: { type: "status" },
+  getLphDataForYearAndQuarter: { type: "status" },
+};
+const SORT = {}; // per-operation table sort: { col, dir }
+
+const isNum=(v)=> typeof v==="number" && isFinite(v);
+const looksLikeMoney=(k)=> /(upb|balance|amount|amt|value|price|limit|dollar|proceeds|principal|unpaid)/i.test(k);
+const looksLikePercent=(k)=> /(rate|pct|percent|ratio|yield|coupon|dti|ltv)/i.test(k);
+const looksLikeIdOrUrl=(k)=> /(^id$|_id$|\bid\b|uri|url|link|timestamp|guid|uuid|arn|hash|s3)/i.test(k);
+function fmtNum(n){ try{ return Number(n).toLocaleString("en-US"); }catch{ return String(n); } }
+function fmtMoney(n){ try{ return "$"+Number(n).toLocaleString("en-US",{maximumFractionDigits:0}); }catch{ return String(n); } }
+function fmtPercent(n){ const v=Math.abs(n)<=1?n*100:n; return (Math.round(v*100)/100)+"%"; }
+function fmtDate(s){
+  const m=String(s).match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?/);
+  if(!m) return String(s);
+  const months=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  let out=`${months[+m[2]-1]} ${+m[3]}, ${m[1]}`;
+  if(m[4]!=null) out+=` ${m[4]}:${m[5]}${m[6]?":"+m[6]:""}`;
+  return out;
+}
+function fmtValue(key,v){
+  if(v==null) return "—";
+  if(isNum(v)){
+    if(looksLikePercent(key)) return fmtPercent(v);
+    if(looksLikeMoney(key)) return fmtMoney(v);
+    if(Number.isInteger(v)||Math.abs(v)>=1000) return fmtNum(v);
+    return String(v);
+  }
+  if(typeof v=="boolean") return v?"Yes":"No";
+  const s=String(v);
+  if(/^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2})/.test(s)) return fmtDate(s);
+  return s;
+}
+const truncate=(s,n)=>{ s=String(s); return s.length>n ? s.slice(0,n)+"…" : s; };
+const humanizeKey=(k)=> String(k).replace(/[_\-]+/g," ").replace(/([a-z])([A-Z])/g,"$1 $2").replace(/\s+/g," ").replace(/\b\w/g,c=>c.toUpperCase()).trim();
+const safeJson=(d)=>{ try{ return JSON.stringify(d,null,2); }catch{ return String(d); } };
+
+function recordsFrom(data){
+  if(Array.isArray(data)) return (data.length && data.every(x=>x&&typeof x=="object"&&!Array.isArray(x))) ? data : null;
+  if(data&&typeof data=="object"){
+    for(const k of Object.keys(data)){
+      const v=data[k];
+      if(Array.isArray(v)&&v.length&&v.every(x=>x&&typeof x=="object"&&!Array.isArray(x))) return v;
+    }
+  }
+  return null;
+}
+function isStatusObject(data){
+  if(!data||typeof data!="object"||Array.isArray(data)) return false;
+  const keys=Object.keys(data).map(k=>k.toLowerCase());
+  const hasS3=keys.some(k=>k.includes("s3"));
+  const hasState=keys.some(k=>k=="currentstate"||k=="state"||k=="status");
+  const hasReq=keys.some(k=>k.includes("request")&&k.includes("id"));
+  const hasTs=keys.some(k=>k.includes("timestamp"));
+  return Object.keys(data).length<=12 && (hasS3 || (hasState && (hasReq||hasTs)));
+}
+function detectType(data,opId,config){
+  const cfg=config&&config[opId];
+  if(cfg&&cfg.type) return cfg.type;
+  if(data==null||typeof data!="object") return "json";
+  if(isStatusObject(data)) return "status";
+  if(recordsFrom(data)) return "table";
+  if(!Array.isArray(data)&&typeof data=="object"){
+    const vals=Object.values(data);
+    const scalarish=vals.filter(v=>v==null||typeof v!="object").length;
+    if(vals.length && scalarish>=Math.ceil(vals.length*0.6)) return "detail";
+  }
+  return "json";
+}
+function unionKeys(records){
+  const set=new Set(), out=[];
+  for(const r of records) for(const k of Object.keys(r)) if(!set.has(k)){ set.add(k); out.push(k); }
+  return out;
+}
+function pickChart(records,cols,cfg){
+  if(cfg&&cfg.chart==false) return null;
+  if(cfg&&cfg.chart&&typeof cfg.chart=="object"&&cfg.chart.x&&cfg.chart.y) return { x:cfg.chart.x, y:cfg.chart.y };
+  if(records.length<2||records.length>30) return null;
+  let x=null,y=null;
+  for(const c of cols){
+    const sample=records.map(r=>r[c]);
+    const allStr=sample.every(v=>typeof v=="string"||v==null);
+    const distinct=new Set(sample.map(v=>String(v))).size;
+    if(!x&&allStr&&!looksLikeIdOrUrl(c)&&distinct==records.length) x=c;
+  }
+  for(const c of cols){ if(c==x) continue; if(records.every(r=>isNum(r[c]))&&!looksLikeIdOrUrl(c)){ y=c; break; } }
+  return (x&&y)?{x,y}:null;
+}
+function renderStatus(data){
+  const keys=Object.keys(data);
+  const byLc=(pred)=> keys.find(k=>pred(k.toLowerCase()));
+  const stateKey=byLc(k=>k=="currentstate"||k=="state"||k=="status");
+  const state=stateKey?data[stateKey]:"";
+  const done=/complete|success|ready|done|finished/i.test(String(state));
+  const s3Key=byLc(k=>k.includes("s3"));
+  const s3=s3Key?data[s3Key]:null;
+  const reqKey=byLc(k=>k.includes("request")&&k.includes("id"));
+  const reqId=reqKey?data[reqKey]:null;
+  const tsKey=byLc(k=>k.includes("timestamp")||k.includes("generated"));
+  const ts=tsKey?data[tsKey]:null;
+  const periodKey=byLc(k=>k.includes("period"));
+  const period=periodKey?data[periodKey]:null;
+  const kv=[];
+  if(period!=null) kv.push(["Reporting period", esc(fmtValue(periodKey,period))]);
+  if(ts!=null) kv.push(["Generated", esc(fmtValue(tsKey,ts))]);
+  if(reqId!=null) kv.push(["Request ID", `<span class="rr-mono">${esc(truncate(reqId,14))}</span> <button type="button" class="rr-mini rr-copy" data-copy="${esc(String(reqId))}">Copy</button>`]);
+  const btns=[];
+  if(s3){ btns.push(`<a class="rr-btn" href="${esc(String(s3))}" target="_blank" rel="noopener">Open result ↗</a>`);
+          btns.push(`<button type="button" class="rr-btn ghost rr-copy" data-copy="${esc(String(s3))}">Copy URI</button>`); }
+  return `<div class="rr rr-status">
+    <div class="rr-status-hd"><span class="rr-badge${done?" ok":""}">${done?"✓ ":""}${esc(String(state)||"Result")}</span><span class="rr-status-sub">${done?"Result ready":"Status"}</span></div>
+    ${kv.length?`<div class="rr-kv">${kv.map(([k,v])=>`<div class="rr-k">${esc(k)}</div><div class="rr-v">${v}</div>`).join("")}</div>`:""}
+    ${btns.length?`<div class="rr-actions">${btns.join("")}</div>`:""}
+  </div>`;
+}
+function renderDetailCard(data){
+  const rows=Object.entries(data).filter(([k,v])=> v==null||typeof v!="object").map(([k,v])=>{
+    let val;
+    if(typeof v=="string"&&(looksLikeIdOrUrl(k)||v.length>44)&&v.length>24)
+      val=`<span class="rr-mono">${esc(truncate(v,44))}</span> <button type="button" class="rr-mini rr-copy" data-copy="${esc(v)}">Copy</button>`;
+    else val=esc(fmtValue(k,v));
+    return `<div class="rr-k">${esc(humanizeKey(k))}</div><div class="rr-v">${val}</div>`;
+  }).join("");
+  return `<div class="rr rr-detail"><div class="rr-kv">${rows}</div></div>`;
+}
+function renderTable(records,cols,sort){
+  const CAP=50;
+  let rows=records;
+  if(sort&&sort.col){
+    const dir=sort.dir=="desc"?-1:1;
+    rows=records.slice().sort((a,b)=>{
+      const av=a[sort.col], bv=b[sort.col];
+      if(isNum(av)&&isNum(bv)) return (av-bv)*dir;
+      return String(av==null?"":av).localeCompare(String(bv==null?"":bv))*dir;
+    });
+  }
+  const shown=rows.slice(0,CAP);
+  const th=cols.map(c=>{ const arrow=(sort&&sort.col==c)?(sort.dir=="desc"?" ▾":" ▴"):""; return `<th class="rr-th" data-col="${esc(c)}">${esc(humanizeKey(c))}${arrow}</th>`; }).join("");
+  const trs=shown.map(r=>`<tr>${cols.map(c=>`<td>${esc(fmtValue(c,r[c]))}</td>`).join("")}</tr>`).join("");
+  const more=records.length>CAP?`<div class="rr-note">Showing ${CAP} of ${fmtNum(records.length)} rows — full data in the raw response.</div>`:"";
+  return `<div class="rr rr-tablewrap"><table class="rr-table"><thead><tr>${th}</tr></thead><tbody>${trs}</tbody></table></div>${more}`;
+}
+function renderChart(records,x,y){
+  const pts=records.map(r=>({label:String(r[x]==null?"":r[x]),value:Number(r[y])})).filter(p=>isFinite(p.value));
+  if(!pts.length) return "";
+  const max=Math.max(...pts.map(p=>p.value),0);
+  const H=170,pad=26,bw=Math.max(14,Math.min(40,Math.round(360/pts.length))),gap=bw+14,W=pad*2+pts.length*gap;
+  const bars=pts.map((p,i)=>{
+    const h=max>0?(H-pad*2)*(p.value/max):0;
+    const xx=pad+i*gap+(gap-bw)/2, yy=H-pad-h;
+    return `<g><rect x="${xx.toFixed(1)}" y="${yy.toFixed(1)}" width="${bw}" height="${Math.max(h,0).toFixed(1)}" rx="3" fill="var(--accent)"><title>${esc(p.label)}: ${esc(fmtValue(y,p.value))}</title></rect>`
+      +`<text x="${(xx+bw/2).toFixed(1)}" y="${(H-pad+13).toFixed(1)}" text-anchor="middle" class="rr-axis">${esc(truncate(p.label,9))}</text></g>`;
+  }).join("");
+  return `<div class="rr rr-chart"><div class="rr-chart-t">${esc(humanizeKey(y))} by ${esc(humanizeKey(x))}</div>`
+    +`<svg viewBox="0 0 ${W} ${H}" class="rr-svg" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${esc(humanizeKey(y))} by ${esc(humanizeKey(x))}">`
+    +`<line x1="${pad}" y1="${H-pad}" x2="${W-pad}" y2="${H-pad}" class="rr-axisline"/>${bars}</svg></div>`;
+}
+function rawDetails(data,open){
+  return `<details class="rr-raw"${open?" open":""}><summary>View raw response</summary><pre class="rr-pre">${esc(safeJson(data))}</pre></details>`;
+}
+function renderApiResult(data,opId,config){
+  try{
+    const cfg=(config&&config[opId])||{};
+    const type=detectType(data,opId,config);
+    if(type=="status") return `<div class="rr-result">${renderStatus(data)}${rawDetails(data,false)}</div>`;
+    if(type=="detail") return `<div class="rr-result">${renderDetailCard(data)}${rawDetails(data,false)}</div>`;
+    if(type=="table"){
+      const records=recordsFrom(data)||[];
+      const cols=unionKeys(records);
+      const chart=pickChart(records,cols,cfg);
+      const chartHtml=chart?renderChart(records,chart.x,chart.y):"";
+      return `<div class="rr-result">${chartHtml}${renderTable(records,cols,SORT[opId]||null)}${rawDetails(data,false)}</div>`;
+    }
+    return `<div class="rr-result">${rawDetails(data,true)}</div>`;
+  }catch(e){
+    return `<div class="rr-result"><div class="rr-note">Couldn't build a summary; showing raw response.</div><pre class="rr-pre">${esc(safeJson(data))}</pre></div>`;
+  }
+}
+function copyText(text,btn){
+  const done=()=>{ if(btn){ const t=btn.textContent; btn.textContent="Copied"; setTimeout(()=>{ if(btn) btn.textContent=t; },1200); } };
+  try{ if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(text).then(done,()=>fallbackCopy(text,done)); return; } }catch(e){}
+  fallbackCopy(text,done);
+}
+function fallbackCopy(text,done){
+  try{ const ta=document.createElement("textarea"); ta.value=text; ta.style.position="fixed"; ta.style.opacity="0"; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta); done&&done(); }catch(e){}
 }
 
 // --- list-view helpers -----------------------------------------------------
@@ -340,9 +580,11 @@ function renderDetail(){
     const note = op.note ? `<div class="op-note">${esc(op.note)}</div>` : "";
     const data = RESULTS[`${entry.name}::${op.id}`];
     const isErr = data && typeof data === "object" && "error" in data;
-    const resultBlock = (data!==undefined)
-      ? `<div class="result${isErr ? " err" : ""}">${esc(isErr ? data.error : JSON.stringify(data, null, 2))}</div>`
-      : "";
+    const resultBlock = (data===undefined)
+      ? ""
+      : isErr
+        ? `<div class="result err">${esc(data.error)}</div>`
+        : renderApiResult(data, op.id, API_RENDER_CONFIG);
     return `<div class="op" data-op="${esc(op.id)}">
       <div class="op-lab">${verb}${esc(op.label)}</div>
       ${note}
@@ -370,6 +612,7 @@ function renderDetail(){
       });
     });
 
+    // Run directly via the ext-apps bridge -- no Claude prompt, no Enter.
     opEl.querySelector(".run-btn").addEventListener("click", async ()=>{
       const args = collectArgs(op, opEl, entry);
       const btn = opEl.querySelector(".run-btn");
@@ -390,6 +633,12 @@ function renderDetail(){
       renderDetail();
     });
   });
+
+  root.querySelectorAll(".rr-copy").forEach(b=> b.addEventListener("click",(e)=>{ e.stopPropagation(); copyText(b.dataset.copy||"", b); }));
+  root.querySelectorAll(".rr-th").forEach(th=> th.addEventListener("click",()=>{
+    const opEl=th.closest(".op"); if(!opEl) return; const opId=opEl.dataset.op; const col=th.dataset.col; const cur=SORT[opId]||{};
+    SORT[opId]={ col, dir:(cur.col===col&&cur.dir!=="desc")?"desc":"asc" }; renderDetail();
+  }));
 
   wireBack(root); wireDisplay(root);
 }
