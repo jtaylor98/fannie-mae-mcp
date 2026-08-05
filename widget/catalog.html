@@ -364,21 +364,6 @@ function unionKeys(records){
 // per-column filtering + CSV export helpers
 function distinctVals(records,col){ const s=new Set(); for(const r of records){ const v=r[col]; s.add(v==null?"":String(v)); } return [...s]; }
 function colIsSelect(records,col){ return distinctVals(records,col).length<=40; }
-// context-aware "All <column>" default label for filter dropdowns (no parentheses)
-const FILTER_ACRONYMS=new Set(["msa","ltv","cltv","dti","upb","arm","harp","cas","cirt","rpl","lph","hera","zip","fips","apr","llpa","id","uic","poi"]);
-function pluralizeWord(w){
-  if(/[^aeiou]y$/i.test(w)) return w.slice(0,-1)+"ies";
-  if(/(s|x|z|ch|sh)$/i.test(w)) return w+"es";
-  return w+"s";
-}
-function allLabel(col){
-  const words=humanizeKey(col).split(" ").filter(Boolean);
-  if(!words.length) return "All";
-  return "All "+words.map((w,i)=>{
-    const base=FILTER_ACRONYMS.has(w.toLowerCase())?w.toUpperCase():w.toLowerCase();
-    return i===words.length-1?pluralizeWord(base):base;
-  }).join(" ");
-}
 function applyFilters(records,filters){
   const active=Object.entries(filters||{}).filter(([,v])=>v!=null&&v!=="");
   if(!active.length) return records;
@@ -481,7 +466,7 @@ function renderTable(records,cols,sort,filters,opId){
     const lab=esc(humanizeKey(c));
     if(isSel){
       const opts=distinctVals(records,c).sort().map(v=>`<option value="${esc(v)}"${v===cur?" selected":""}>${esc(v===""?"Blank":v)}</option>`).join("");
-      return `<th class="rr-fcell"><div class="${wrapCls}"><select class="rr-filter" data-col="${esc(c)}" aria-label="Filter by ${lab}"${titleAttr}><option value="">${esc(allLabel(c))}</option>${opts}</select></div></th>`;
+      return `<th class="rr-fcell"><div class="${wrapCls}"><select class="rr-filter" data-col="${esc(c)}" aria-label="Filter by ${lab}"${titleAttr}><option value="">All</option>${opts}</select></div></th>`;
     }
     return `<th class="rr-fcell"><div class="${wrapCls}"><input class="rr-filter" data-col="${esc(c)}" type="text" value="${esc(cur)}" placeholder="Filter ${esc(humanizeKey(c).toLowerCase())}…" aria-label="Filter by ${lab}"${titleAttr} />${active?`<button type="button" class="rr-fclear" data-col="${esc(c)}" title="Clear filter" aria-label="Clear ${lab} filter">&times;</button>`:""}</div></th>`;
   }).join("");
@@ -614,7 +599,7 @@ function renderList(){
   }).join("");
 
   root.innerHTML = `<div class="hd">
-      <div class="hd-top"><h1>Fannie Mae Public APIs <span style="font-size:9px;font-weight:400;letter-spacing:0;opacity:.55">v1.4</span></h1>${displayControlsHtml()}</div>
+      <div class="hd-top"><h1>Fannie Mae Public APIs <span style="font-size:9px;font-weight:400;letter-spacing:0;opacity:.55">v1.5</span></h1>${displayControlsHtml()}</div>
       <div class="stats"><span><b>${apis.length}</b> total APIs</span><span><b>${liveCount}</b> live in this connector</span>${downCount?`<span><b class="warn">${downCount}</b> unreachable</span>`:""}<span><b>${apis.length-liveCount-downCount}</b> catalog-only</span></div>
     </div>
     <div class="controls">
@@ -760,12 +745,12 @@ function wireBack(scope){
 }
 
 (async()=>{
-  app=new App({name:"FnmaCatalog",version:"1.4.0"},{availableDisplayModes:["inline","fullscreen","pip"]},{autoResize:true});
+  app=new App({name:"FnmaCatalog",version:"1.5.0"},{availableDisplayModes:["inline","fullscreen","pip"]},{autoResize:true});
   const theme=()=>{try{document.documentElement.classList.toggle("dark",ctx().theme==="dark")}catch{}};
   app.ontoolresult=(result)=>{ try{ DATA=result?.structuredContent ?? JSON.parse(result.content[0].text); }catch{ DATA=null; } view="list"; selectedName=null; theme(); render(); };
   app.onhostcontextchanged=()=>{ theme(); render(); };
   await app.connect();
-  console.log("[fnma build] v1.4 (polished filter UI)");
+  console.log("[fnma build] v1.5 (filter default: All)");
   console.log("[fnma catalog] host availableDisplayModes:", ctx().availableDisplayModes, "| current:", ctx().displayMode);
   theme(); render();
 })();
