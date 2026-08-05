@@ -542,7 +542,7 @@ function renderList(){
   }).join("");
 
   root.innerHTML = `<div class="hd">
-      <div class="hd-top"><h1>Fannie Mae Public APIs</h1>${displayControlsHtml()}</div>
+      <div class="hd-top"><h1>Fannie Mae Public APIs <span style="font-size:9px;font-weight:400;letter-spacing:0;opacity:.55">build nested-v2</span></h1>${displayControlsHtml()}</div>
       <div class="stats"><span><b>${apis.length}</b> total APIs</span><span><b>${liveCount}</b> live in this connector</span>${downCount?`<span><b class="warn">${downCount}</b> unreachable</span>`:""}<span><b>${apis.length-liveCount-downCount}</b> catalog-only</span></div>
     </div>
     <div class="controls">
@@ -668,11 +668,12 @@ function wireBack(scope){
 }
 
 (async()=>{
-  app=new App({name:"FnmaCatalog",version:"1.0.0"},{availableDisplayModes:["inline","fullscreen","pip"]},{autoResize:true});
+  app=new App({name:"FnmaCatalog",version:"1.2.0"},{availableDisplayModes:["inline","fullscreen","pip"]},{autoResize:true});
   const theme=()=>{try{document.documentElement.classList.toggle("dark",ctx().theme==="dark")}catch{}};
   app.ontoolresult=(result)=>{ try{ DATA=result?.structuredContent ?? JSON.parse(result.content[0].text); }catch{ DATA=null; } view="list"; selectedName=null; theme(); render(); };
   app.onhostcontextchanged=()=>{ theme(); render(); };
   await app.connect();
+  console.log("[fnma build] nested-detector-v2 (recordsFrom recursive)");
   console.log("[fnma catalog] host availableDisplayModes:", ctx().availableDisplayModes, "| current:", ctx().displayMode);
   theme(); render();
 })();
