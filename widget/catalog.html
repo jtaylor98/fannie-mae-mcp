@@ -10,10 +10,6 @@
   bridge (app.callServerTool "call_fnma_api") and render the result inline --
   no Claude round-trip, no Enter. A Back button returns to the list.
 
-  Run results are passed through renderApiResult(): a reusable layer that picks
-  a status card / detail card / table [+ SVG chart] / JSON fallback by shape,
-  with the full raw JSON kept under a collapsible "View raw response".
-
   Card states: live (green), down (amber, upstream 404), static (catalog only).
   Display modes: App declares inline/fullscreen/pip; header toggle only shows
   a control for a mode the host advertises.
@@ -124,6 +120,11 @@
   .rr-table tbody tr:last-child td{border-bottom:none}
   .rr-table tbody tr:hover{background:var(--off)}
   .rr-note{font-size:10px;color:var(--muted);margin-top:5px}
+  .rr-tabtools{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:8px 0 5px;flex-wrap:wrap}
+  .rr-tabtools-r{display:inline-flex;gap:6px;flex-wrap:wrap}
+  .rr-filter-row th{position:static;background:var(--paper);padding:3px 6px;border-bottom:1px solid var(--line);font-weight:400}
+  .rr-filter{font-family:inherit;font-size:10px;color:var(--body);background:var(--paper);border:1px solid var(--slate);border-radius:4px;padding:2px 4px;max-width:150px;width:100%}
+  .rr-filter:focus{outline:1px solid var(--pass)}
   .rr-chart-t{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:2px}
   .rr-svg{width:100%;height:auto;max-height:200px;display:block}
   .rr-axis{font-size:8px;fill:var(--muted)}
@@ -273,8 +274,9 @@ const API_RENDER_CONFIG = {
   getLphDataForYearAndQuarter: { type: "status" },
 };
 const SORT = {}; // per-operation table sort: { col, dir }
+const FILTERS = {}; // per-operation column filters: { col: value }
 
-const isNum=(v)=> typeof v==="number" && isFinite(v);
+const isNum=(v)=> typeof v=="number" && isFinite(v);
 const looksLikeMoney=(k)=> /(upb|balance|amount|amt|value|price|limit|dollar|proceeds|principal|unpaid)/i.test(k);
 const looksLikePercent=(k)=> /(rate|pct|percent|ratio|yield|coupon|dti|ltv)/i.test(k);
 const looksLikeIdOrUrl=(k)=> /(^id$|_id$|\bid\b|uri|url|link|timestamp|guid|uuid|arn|hash|s3)/i.test(k);
@@ -297,7 +299,7 @@ function fmtValue(key,v){
     if(Number.isInteger(v)||Math.abs(v)>=1000) return fmtNum(v);
     return String(v);
   }
-  if(typeof v==="boolean") return v?"Yes":"No";
+  if(typeof v=="boolean") return v?"Yes":"No";
   const s=String(v);
   if(/^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2})/.test(s)) return fmtDate(s);
   return s;
@@ -306,27 +308,27 @@ const truncate=(s,n)=>{ s=String(s); return s.length>n ? s.slice(0,n)+"…" : s;
 const humanizeKey=(k)=> String(k).replace(/[_\-]+/g," ").replace(/([a-z])([A-Z])/g,"$1 $2").replace(/\s+/g," ").replace(/\b\w/g,c=>c.toUpperCase()).trim();
 const safeJson=(d)=>{ try{ return JSON.stringify(d,null,2); }catch{ return String(d); } };
 
-const isRecordArray=(v)=> Array.isArray(v)&&v.length&&v.every(x=>x&&typeof x==="object"&&!Array.isArray(x));
+const isRecordArray=(v)=> Array.isArray(v)&&v.length&&v.every(x=>x&&typeof x=="object"&&!Array.isArray(x));
 function recordsFrom(data,depth){
   depth=depth||0;
   if(Array.isArray(data)) return isRecordArray(data)?data:null;
-  if(data&&typeof data==="object"&&depth<4){
+  if(data&&typeof data=="object"&&depth<4){
     const keys=Object.keys(data);
     // 1) a direct array-of-objects property (results, data, items, _embedded, ...)
     for(const k of keys){ if(isRecordArray(data[k])) return data[k]; }
     // 2) otherwise recurse into nested objects (e.g. HAL envelope results.embedded)
     for(const k of keys){
       const v=data[k];
-      if(v&&typeof v==="object"&&!Array.isArray(v)){ const f=recordsFrom(v,depth+1); if(f) return f; }
+      if(v&&typeof v=="object"&&!Array.isArray(v)){ const f=recordsFrom(v,depth+1); if(f) return f; }
     }
   }
   return null;
 }
 function isStatusObject(data){
-  if(!data||typeof data!=="object"||Array.isArray(data)) return false;
+  if(!data||typeof data!="object"||Array.isArray(data)) return false;
   const keys=Object.keys(data).map(k=>k.toLowerCase());
   const hasS3=keys.some(k=>k.includes("s3"));
-  const hasState=keys.some(k=>k==="currentstate"||k==="state"||k==="status");
+  const hasState=keys.some(k=>k=="currentstate"||k=="state"||k=="status");
   const hasReq=keys.some(k=>k.includes("request")&&k.includes("id"));
   const hasTs=keys.some(k=>k.includes("timestamp"));
   return Object.keys(data).length<=12 && (hasS3 || (hasState && (hasReq||hasTs)));
@@ -334,12 +336,12 @@ function isStatusObject(data){
 function detectType(data,opId,config){
   const cfg=config&&config[opId];
   if(cfg&&cfg.type) return cfg.type;
-  if(data==null||typeof data!=="object") return "json";
+  if(data==null||typeof data!="object") return "json";
   if(isStatusObject(data)) return "status";
   if(recordsFrom(data)) return "table";
-  if(!Array.isArray(data)&&typeof data==="object"){
+  if(!Array.isArray(data)&&typeof data=="object"){
     const vals=Object.values(data);
-    const scalarish=vals.filter(v=>v==null||typeof v!=="object").length;
+    const scalarish=vals.filter(v=>v==null||typeof v!="object").length;
     if(vals.length && scalarish>=Math.ceil(vals.length*0.6)) return "detail";
   }
   return "json";
@@ -349,14 +351,41 @@ function unionKeys(records){
   for(const r of records) for(const k of Object.keys(r)) if(!set.has(k)){ set.add(k); out.push(k); }
   return out;
 }
+// per-column filtering + CSV export helpers
+function distinctVals(records,col){ const s=new Set(); for(const r of records){ const v=r[col]; s.add(v==null?"":String(v)); } return [...s]; }
+function colIsSelect(records,col){ return distinctVals(records,col).length<=40; }
+function applyFilters(records,filters){
+  const active=Object.entries(filters||{}).filter(([,v])=>v!=null&&v!="");
+  if(!active.length) return records;
+  return records.filter(r=> active.every(([col,val])=>{
+    const cell=r[col]==null?"":String(r[col]);
+    if(colIsSelect(records,col)) return cell==val;                 // exact for categorical columns
+    return cell.toLowerCase().includes(String(val).toLowerCase());  // substring for high-cardinality
+  }));
+}
+function toCSV(records,cols){
+  const q=(v)=>{ const s=(v==null?"":String(v)); return /[",\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; };
+  return [cols.map(q).join(","), ...records.map(r=>cols.map(c=>q(r[c])).join(","))].join("\n");
+}
+async function downloadCSV(records,cols,opId,btn){
+  const csv=toCSV(records,cols);
+  try{
+    if(app && typeof app.downloadFile=="function"){
+      const r=await app.downloadFile({ contents:[{ type:"resource", resource:{ uri:"file:///fnma-"+opId+".csv", mimeType:"text/csv", text:csv } }] });
+      if(!(r&&r.isError)) return;
+    }
+  }catch(e){}
+  copyText(csv);
+  if(btn){ const o=btn.textContent; btn.textContent="Copied CSV"; setTimeout(()=>{ if(btn) btn.textContent=o; },1600); }
+}
 function pickChart(records,cols,cfg){
   if(cfg&&cfg.chart===false) return null;
-  if(cfg&&cfg.chart&&typeof cfg.chart==="object"&&cfg.chart.x&&cfg.chart.y) return { x:cfg.chart.x, y:cfg.chart.y };
+  if(cfg&&cfg.chart&&typeof cfg.chart=="object"&&cfg.chart.x&&cfg.chart.y) return { x:cfg.chart.x, y:cfg.chart.y };
   if(records.length<2||records.length>30) return null;
   let x=null,y=null;
   for(const c of cols){
     const sample=records.map(r=>r[c]);
-    const allStr=sample.every(v=>typeof v==="string"||v==null);
+    const allStr=sample.every(v=>typeof v=="string"||v==null);
     const distinct=new Set(sample.map(v=>String(v))).size;
     if(!x&&allStr&&!looksLikeIdOrUrl(c)&&distinct===records.length) x=c;
   }
@@ -366,7 +395,7 @@ function pickChart(records,cols,cfg){
 function renderStatus(data){
   const keys=Object.keys(data);
   const byLc=(pred)=> keys.find(k=>pred(k.toLowerCase()));
-  const stateKey=byLc(k=>k==="currentstate"||k==="state"||k==="status");
+  const stateKey=byLc(k=>k=="currentstate"||k=="state"||k=="status");
   const state=stateKey?data[stateKey]:"";
   const done=/complete|success|ready|done|finished/i.test(String(state));
   const s3Key=byLc(k=>k.includes("s3"));
@@ -391,31 +420,44 @@ function renderStatus(data){
   </div>`;
 }
 function renderDetailCard(data){
-  const rows=Object.entries(data).filter(([k,v])=> v==null||typeof v!=="object").map(([k,v])=>{
+  const rows=Object.entries(data).filter(([k,v])=> v==null||typeof v!="object").map(([k,v])=>{
     let val;
-    if(typeof v==="string"&&(looksLikeIdOrUrl(k)||v.length>44)&&v.length>24)
+    if(typeof v=="string"&&(looksLikeIdOrUrl(k)||v.length>44)&&v.length>24)
       val=`<span class="rr-mono">${esc(truncate(v,44))}</span> <button type="button" class="rr-mini rr-copy" data-copy="${esc(v)}">Copy</button>`;
     else val=esc(fmtValue(k,v));
     return `<div class="rr-k">${esc(humanizeKey(k))}</div><div class="rr-v">${val}</div>`;
   }).join("");
   return `<div class="rr rr-detail"><div class="rr-kv">${rows}</div></div>`;
 }
-function renderTable(records,cols,sort){
+function renderTable(records,cols,sort,filters,opId){
   const CAP=50;
-  let rows=records;
+  const total=records.length;
+  let rows=applyFilters(records,filters);
+  const filtered=rows.length;
   if(sort&&sort.col){
-    const dir=sort.dir==="desc"?-1:1;
-    rows=records.slice().sort((a,b)=>{
+    const dir=sort.dir=="desc"?-1:1;
+    rows=rows.slice().sort((a,b)=>{
       const av=a[sort.col], bv=b[sort.col];
       if(isNum(av)&&isNum(bv)) return (av-bv)*dir;
       return String(av==null?"":av).localeCompare(String(bv==null?"":bv))*dir;
     });
   }
   const shown=rows.slice(0,CAP);
-  const th=cols.map(c=>{ const arrow=(sort&&sort.col===c)?(sort.dir==="desc"?" ▾":" ▴"):""; return `<th class="rr-th" data-col="${esc(c)}">${esc(humanizeKey(c))}${arrow}</th>`; }).join("");
+  const hasFilters=filters&&Object.values(filters).some(v=>v!=null&&v!="");
+  const countTxt=`Showing ${shown.length} of ${fmtNum(filtered)}${filtered!==total?` (filtered from ${fmtNum(total)})`:""} rows`;
+  const toolbar=`<div class="rr-tabtools"><span class="rr-note" style="margin:0">${countTxt}</span><span class="rr-tabtools-r">${hasFilters?`<button type="button" class="rr-mini rr-clear-filters">Clear filters</button>`:""}<button type="button" class="rr-mini rr-csv-copy">Copy CSV</button><button type="button" class="rr-mini rr-csv-download">Download CSV</button></span></div>`;
+  const th=cols.map(c=>{ const arrow=(sort&&sort.col===c)?(sort.dir=="desc"?" ▾":" ▴"):""; return `<th class="rr-th" data-col="${esc(c)}">${esc(humanizeKey(c))}${arrow}</th>`; }).join("");
+  const fcells=cols.map(c=>{
+    const cur=(filters&&filters[c])||"";
+    if(colIsSelect(records,c)){
+      const opts=distinctVals(records,c).sort().map(v=>`<option value="${esc(v)}"${v===cur?" selected":""}>${esc(v==""?"(blank)":v)}</option>`).join("");
+      return `<th class="rr-fcell"><select class="rr-filter" data-col="${esc(c)}"><option value="">(all)</option>${opts}</select></th>`;
+    }
+    return `<th class="rr-fcell"><input class="rr-filter" data-col="${esc(c)}" type="text" value="${esc(cur)}" placeholder="filter…" /></th>`;
+  }).join("");
   const trs=shown.map(r=>`<tr>${cols.map(c=>`<td>${esc(fmtValue(c,r[c]))}</td>`).join("")}</tr>`).join("");
-  const more=records.length>CAP?`<div class="rr-note">Showing ${CAP} of ${fmtNum(records.length)} rows — full data in the raw response.</div>`:"";
-  return `<div class="rr rr-tablewrap"><table class="rr-table"><thead><tr>${th}</tr></thead><tbody>${trs}</tbody></table></div>${more}`;
+  const emptyRow=shown.length===0?`<tr><td colspan="${cols.length}" style="padding:12px;color:var(--muted)">No rows match the current filters.</td></tr>`:"";
+  return `${toolbar}<div class="rr rr-tablewrap"><table class="rr-table"><thead><tr>${th}</tr><tr class="rr-filter-row">${fcells}</tr></thead><tbody>${trs}${emptyRow}</tbody></table></div>`;
 }
 function renderChart(records,x,y){
   const pts=records.map(r=>({label:String(r[x]==null?"":r[x]),value:Number(r[y])})).filter(p=>isFinite(p.value));
@@ -439,14 +481,14 @@ function renderApiResult(data,opId,config){
   try{
     const cfg=(config&&config[opId])||{};
     const type=detectType(data,opId,config);
-    if(type==="status") return `<div class="rr-result">${renderStatus(data)}${rawDetails(data,false)}</div>`;
-    if(type==="detail") return `<div class="rr-result">${renderDetailCard(data)}${rawDetails(data,false)}</div>`;
-    if(type==="table"){
+    if(type=="status") return `<div class="rr-result">${renderStatus(data)}${rawDetails(data,false)}</div>`;
+    if(type=="detail") return `<div class="rr-result">${renderDetailCard(data)}${rawDetails(data,false)}</div>`;
+    if(type=="table"){
       const records=recordsFrom(data)||[];
       const cols=unionKeys(records);
       const chart=pickChart(records,cols,cfg);
       const chartHtml=chart?renderChart(records,chart.x,chart.y):"";
-      return `<div class="rr-result">${chartHtml}${renderTable(records,cols,SORT[opId]||null)}${rawDetails(data,false)}</div>`;
+      return `<div class="rr-result">${chartHtml}${renderTable(records,cols,SORT[opId]||null,FILTERS[opId]||null,opId)}${rawDetails(data,false)}</div>`;
     }
     return `<div class="rr-result">${rawDetails(data,true)}</div>`;
   }catch(e){
@@ -465,7 +507,7 @@ function fallbackCopy(text,done){
 // Falls back to copying the URL if the host doesn't support openLink.
 async function openLink(url,btn){
   try{
-    if(app && typeof app.openLink==="function"){
+    if(app && typeof app.openLink=="function"){
       const r=await app.openLink({ url });
       if(!(r&&r.isError)) return;
     }
@@ -499,7 +541,7 @@ function render(){
   const root=document.getElementById("root");
   const apis = DATA?.apis||[];
   if(apis.length===0){ root.innerHTML='<div style="padding:26px 16px;color:var(--muted);text-align:center">No APIs found.</div>'; return; }
-  if(view==="detail" && selectedEntry()) renderDetail();
+  if(view=="detail" && selectedEntry()) renderDetail();
   else { view="list"; renderList(); }
 }
 
@@ -513,7 +555,7 @@ function renderList(){
 
   const sections = groupOrder(apis).map(g=>{
     const groupApis = visible.filter(a=>keyOf(a)===g);
-    const showEmpty = groupApis.length===0 && !query && groupBy==="businessLine" && EMPTY_GROUP_NOTE[g];
+    const showEmpty = groupApis.length===0 && !query && groupBy=="businessLine" && EMPTY_GROUP_NOTE[g];
     if(groupApis.length===0 && !showEmpty) return "";
     const body = showEmpty
       ? `<div class="empty-group">${esc(EMPTY_GROUP_NOTE[g])}</div>`
@@ -542,14 +584,14 @@ function renderList(){
   }).join("");
 
   root.innerHTML = `<div class="hd">
-      <div class="hd-top"><h1>Fannie Mae Public APIs <span style="font-size:9px;font-weight:400;letter-spacing:0;opacity:.55">build nested-v2</span></h1>${displayControlsHtml()}</div>
+      <div class="hd-top"><h1>Fannie Mae Public APIs <span style="font-size:9px;font-weight:400;letter-spacing:0;opacity:.55">v1.3</span></h1>${displayControlsHtml()}</div>
       <div class="stats"><span><b>${apis.length}</b> total APIs</span><span><b>${liveCount}</b> live in this connector</span>${downCount?`<span><b class="warn">${downCount}</b> unreachable</span>`:""}<span><b>${apis.length-liveCount-downCount}</b> catalog-only</span></div>
     </div>
     <div class="controls">
       <input type="text" id="q" placeholder="Search APIs by name, category, or description…" value="${esc(query)}" />
       <div class="seg">
-        <button type="button" data-group="businessLine" class="${groupBy==="businessLine"?"on":""}">Business line</button>
-        <button type="button" data-group="tag" class="${groupBy==="tag"?"on":""}">Function</button>
+        <button type="button" data-group="businessLine" class="${groupBy=="businessLine"?"on":""}">Business line</button>
+        <button type="button" data-group="tag" class="${groupBy=="tag"?"on":""}">Function</button>
       </div>
     </div>
     ${visible.length===0 ? '<div class="no-results">No APIs match your search.</div>' : sections}`;
@@ -650,13 +692,30 @@ function renderDetail(){
       }
       renderDetail();
     });
+
+    // per-column filters + CSV export (present only when this op rendered a table)
+    const opData = RESULTS[`${entry.name}::${op.id}`];
+    const recs = (opData && typeof opData=="object" && !("error" in opData)) ? recordsFrom(opData) : null;
+    if(recs){
+      const fcols = unionKeys(recs);
+      opEl.querySelectorAll(".rr-filter").forEach(el=>{
+        el.addEventListener("change", ()=>{ FILTERS[op.id]=FILTERS[op.id]||{}; FILTERS[op.id][el.dataset.col]=el.value; renderDetail(); });
+      });
+      const clr=opEl.querySelector(".rr-clear-filters");
+      if(clr) clr.addEventListener("click", ()=>{ FILTERS[op.id]={}; renderDetail(); });
+      const filtered=applyFilters(recs, FILTERS[op.id]||{});
+      const cp=opEl.querySelector(".rr-csv-copy");
+      if(cp) cp.addEventListener("click", ()=>{ copyText(toCSV(filtered, fcols), cp); });
+      const dl=opEl.querySelector(".rr-csv-download");
+      if(dl) dl.addEventListener("click", ()=>{ downloadCSV(filtered, fcols, op.id, dl); });
+    }
   });
 
   root.querySelectorAll(".rr-copy").forEach(b=> b.addEventListener("click",(e)=>{ e.stopPropagation(); copyText(b.dataset.copy||"", b); }));
   root.querySelectorAll(".rr-open").forEach(b=> b.addEventListener("click",(e)=>{ e.stopPropagation(); openLink(b.dataset.url||"", b); }));
   root.querySelectorAll(".rr-th").forEach(th=> th.addEventListener("click",()=>{
     const opEl=th.closest(".op"); if(!opEl) return; const opId=opEl.dataset.op; const col=th.dataset.col; const cur=SORT[opId]||{};
-    SORT[opId]={ col, dir:(cur.col===col&&cur.dir!=="desc")?"desc":"asc" }; renderDetail();
+    SORT[opId]={ col, dir:(cur.col===col&&cur.dir!="desc")?"desc":"asc" }; renderDetail();
   }));
 
   wireBack(root); wireDisplay(root);
@@ -668,12 +727,12 @@ function wireBack(scope){
 }
 
 (async()=>{
-  app=new App({name:"FnmaCatalog",version:"1.2.0"},{availableDisplayModes:["inline","fullscreen","pip"]},{autoResize:true});
-  const theme=()=>{try{document.documentElement.classList.toggle("dark",ctx().theme==="dark")}catch{}};
+  app=new App({name:"FnmaCatalog",version:"1.3.0"},{availableDisplayModes:["inline","fullscreen","pip"]},{autoResize:true});
+  const theme=()=>{try{document.documentElement.classList.toggle("dark",ctx().theme=="dark")}catch{}};
   app.ontoolresult=(result)=>{ try{ DATA=result?.structuredContent ?? JSON.parse(result.content[0].text); }catch{ DATA=null; } view="list"; selectedName=null; theme(); render(); };
   app.onhostcontextchanged=()=>{ theme(); render(); };
   await app.connect();
-  console.log("[fnma build] nested-detector-v2 (recordsFrom recursive)");
+  console.log("[fnma build] v1.3 (filters + csv)");
   console.log("[fnma catalog] host availableDisplayModes:", ctx().availableDisplayModes, "| current:", ctx().displayMode);
   theme(); render();
 })();
