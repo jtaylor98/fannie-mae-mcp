@@ -297,7 +297,7 @@ function fmtValue(key,v){
     if(Number.isInteger(v)||Math.abs(v)>=1000) return fmtNum(v);
     return String(v);
   }
-  if(typeof v=="boolean") return v?"Yes":"No";
+  if(typeof v==="boolean") return v?"Yes":"No";
   const s=String(v);
   if(/^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2})/.test(s)) return fmtDate(s);
   return s;
@@ -307,20 +307,20 @@ const humanizeKey=(k)=> String(k).replace(/[_\-]+/g," ").replace(/([a-z])([A-Z])
 const safeJson=(d)=>{ try{ return JSON.stringify(d,null,2); }catch{ return String(d); } };
 
 function recordsFrom(data){
-  if(Array.isArray(data)) return (data.length && data.every(x=>x&&typeof x=="object"&&!Array.isArray(x))) ? data : null;
-  if(data&&typeof data=="object"){
+  if(Array.isArray(data)) return (data.length && data.every(x=>x&&typeof x==="object"&&!Array.isArray(x))) ? data : null;
+  if(data&&typeof data==="object"){
     for(const k of Object.keys(data)){
       const v=data[k];
-      if(Array.isArray(v)&&v.length&&v.every(x=>x&&typeof x=="object"&&!Array.isArray(x))) return v;
+      if(Array.isArray(v)&&v.length&&v.every(x=>x&&typeof x==="object"&&!Array.isArray(x))) return v;
     }
   }
   return null;
 }
 function isStatusObject(data){
-  if(!data||typeof data!="object"||Array.isArray(data)) return false;
+  if(!data||typeof data!=="object"||Array.isArray(data)) return false;
   const keys=Object.keys(data).map(k=>k.toLowerCase());
   const hasS3=keys.some(k=>k.includes("s3"));
-  const hasState=keys.some(k=>k=="currentstate"||k=="state"||k=="status");
+  const hasState=keys.some(k=>k==="currentstate"||k==="state"||k==="status");
   const hasReq=keys.some(k=>k.includes("request")&&k.includes("id"));
   const hasTs=keys.some(k=>k.includes("timestamp"));
   return Object.keys(data).length<=12 && (hasS3 || (hasState && (hasReq||hasTs)));
@@ -328,12 +328,12 @@ function isStatusObject(data){
 function detectType(data,opId,config){
   const cfg=config&&config[opId];
   if(cfg&&cfg.type) return cfg.type;
-  if(data==null||typeof data!="object") return "json";
+  if(data==null||typeof data!=="object") return "json";
   if(isStatusObject(data)) return "status";
   if(recordsFrom(data)) return "table";
-  if(!Array.isArray(data)&&typeof data=="object"){
+  if(!Array.isArray(data)&&typeof data==="object"){
     const vals=Object.values(data);
-    const scalarish=vals.filter(v=>v==null||typeof v!="object").length;
+    const scalarish=vals.filter(v=>v==null||typeof v!=="object").length;
     if(vals.length && scalarish>=Math.ceil(vals.length*0.6)) return "detail";
   }
   return "json";
@@ -344,23 +344,23 @@ function unionKeys(records){
   return out;
 }
 function pickChart(records,cols,cfg){
-  if(cfg&&cfg.chart==false) return null;
-  if(cfg&&cfg.chart&&typeof cfg.chart=="object"&&cfg.chart.x&&cfg.chart.y) return { x:cfg.chart.x, y:cfg.chart.y };
+  if(cfg&&cfg.chart===false) return null;
+  if(cfg&&cfg.chart&&typeof cfg.chart==="object"&&cfg.chart.x&&cfg.chart.y) return { x:cfg.chart.x, y:cfg.chart.y };
   if(records.length<2||records.length>30) return null;
   let x=null,y=null;
   for(const c of cols){
     const sample=records.map(r=>r[c]);
-    const allStr=sample.every(v=>typeof v=="string"||v==null);
+    const allStr=sample.every(v=>typeof v==="string"||v==null);
     const distinct=new Set(sample.map(v=>String(v))).size;
-    if(!x&&allStr&&!looksLikeIdOrUrl(c)&&distinct==records.length) x=c;
+    if(!x&&allStr&&!looksLikeIdOrUrl(c)&&distinct===records.length) x=c;
   }
-  for(const c of cols){ if(c==x) continue; if(records.every(r=>isNum(r[c]))&&!looksLikeIdOrUrl(c)){ y=c; break; } }
+  for(const c of cols){ if(c===x) continue; if(records.every(r=>isNum(r[c]))&&!looksLikeIdOrUrl(c)){ y=c; break; } }
   return (x&&y)?{x,y}:null;
 }
 function renderStatus(data){
   const keys=Object.keys(data);
   const byLc=(pred)=> keys.find(k=>pred(k.toLowerCase()));
-  const stateKey=byLc(k=>k=="currentstate"||k=="state"||k=="status");
+  const stateKey=byLc(k=>k==="currentstate"||k==="state"||k==="status");
   const state=stateKey?data[stateKey]:"";
   const done=/complete|success|ready|done|finished/i.test(String(state));
   const s3Key=byLc(k=>k.includes("s3"));
@@ -376,7 +376,7 @@ function renderStatus(data){
   if(ts!=null) kv.push(["Generated", esc(fmtValue(tsKey,ts))]);
   if(reqId!=null) kv.push(["Request ID", `<span class="rr-mono">${esc(truncate(reqId,14))}</span> <button type="button" class="rr-mini rr-copy" data-copy="${esc(String(reqId))}">Copy</button>`]);
   const btns=[];
-  if(s3){ btns.push(`<a class="rr-btn" href="${esc(String(s3))}" target="_blank" rel="noopener">Open result ↗</a>`);
+  if(s3){ btns.push(`<button type="button" class="rr-btn rr-open" data-url="${esc(String(s3))}">Open result ↗</button>`);
           btns.push(`<button type="button" class="rr-btn ghost rr-copy" data-copy="${esc(String(s3))}">Copy URI</button>`); }
   return `<div class="rr rr-status">
     <div class="rr-status-hd"><span class="rr-badge${done?" ok":""}">${done?"✓ ":""}${esc(String(state)||"Result")}</span><span class="rr-status-sub">${done?"Result ready":"Status"}</span></div>
@@ -385,9 +385,9 @@ function renderStatus(data){
   </div>`;
 }
 function renderDetailCard(data){
-  const rows=Object.entries(data).filter(([k,v])=> v==null||typeof v!="object").map(([k,v])=>{
+  const rows=Object.entries(data).filter(([k,v])=> v==null||typeof v!=="object").map(([k,v])=>{
     let val;
-    if(typeof v=="string"&&(looksLikeIdOrUrl(k)||v.length>44)&&v.length>24)
+    if(typeof v==="string"&&(looksLikeIdOrUrl(k)||v.length>44)&&v.length>24)
       val=`<span class="rr-mono">${esc(truncate(v,44))}</span> <button type="button" class="rr-mini rr-copy" data-copy="${esc(v)}">Copy</button>`;
     else val=esc(fmtValue(k,v));
     return `<div class="rr-k">${esc(humanizeKey(k))}</div><div class="rr-v">${val}</div>`;
@@ -398,7 +398,7 @@ function renderTable(records,cols,sort){
   const CAP=50;
   let rows=records;
   if(sort&&sort.col){
-    const dir=sort.dir=="desc"?-1:1;
+    const dir=sort.dir==="desc"?-1:1;
     rows=records.slice().sort((a,b)=>{
       const av=a[sort.col], bv=b[sort.col];
       if(isNum(av)&&isNum(bv)) return (av-bv)*dir;
@@ -406,7 +406,7 @@ function renderTable(records,cols,sort){
     });
   }
   const shown=rows.slice(0,CAP);
-  const th=cols.map(c=>{ const arrow=(sort&&sort.col==c)?(sort.dir=="desc"?" ▾":" ▴"):""; return `<th class="rr-th" data-col="${esc(c)}">${esc(humanizeKey(c))}${arrow}</th>`; }).join("");
+  const th=cols.map(c=>{ const arrow=(sort&&sort.col===c)?(sort.dir==="desc"?" ▾":" ▴"):""; return `<th class="rr-th" data-col="${esc(c)}">${esc(humanizeKey(c))}${arrow}</th>`; }).join("");
   const trs=shown.map(r=>`<tr>${cols.map(c=>`<td>${esc(fmtValue(c,r[c]))}</td>`).join("")}</tr>`).join("");
   const more=records.length>CAP?`<div class="rr-note">Showing ${CAP} of ${fmtNum(records.length)} rows — full data in the raw response.</div>`:"";
   return `<div class="rr rr-tablewrap"><table class="rr-table"><thead><tr>${th}</tr></thead><tbody>${trs}</tbody></table></div>${more}`;
@@ -433,9 +433,9 @@ function renderApiResult(data,opId,config){
   try{
     const cfg=(config&&config[opId])||{};
     const type=detectType(data,opId,config);
-    if(type=="status") return `<div class="rr-result">${renderStatus(data)}${rawDetails(data,false)}</div>`;
-    if(type=="detail") return `<div class="rr-result">${renderDetailCard(data)}${rawDetails(data,false)}</div>`;
-    if(type=="table"){
+    if(type==="status") return `<div class="rr-result">${renderStatus(data)}${rawDetails(data,false)}</div>`;
+    if(type==="detail") return `<div class="rr-result">${renderDetailCard(data)}${rawDetails(data,false)}</div>`;
+    if(type==="table"){
       const records=recordsFrom(data)||[];
       const cols=unionKeys(records);
       const chart=pickChart(records,cols,cfg);
@@ -454,6 +454,18 @@ function copyText(text,btn){
 }
 function fallbackCopy(text,done){
   try{ const ta=document.createElement("textarea"); ta.value=text; ta.style.position="fixed"; ta.style.opacity="0"; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); document.body.removeChild(ta); done&&done(); }catch(e){}
+}
+// Open an external URL via the host (the sandboxed iframe can't open tabs itself).
+// Falls back to copying the URL if the host doesn't support openLink.
+async function openLink(url,btn){
+  try{
+    if(app && typeof app.openLink==="function"){
+      const r=await app.openLink({ url });
+      if(!(r&&r.isError)) return;
+    }
+  }catch(e){}
+  copyText(url);
+  if(btn){ const orig=btn.textContent; btn.textContent="Link copied — paste in browser"; setTimeout(()=>{ if(btn) btn.textContent=orig; },1800); }
 }
 
 // --- list-view helpers -----------------------------------------------------
@@ -635,6 +647,7 @@ function renderDetail(){
   });
 
   root.querySelectorAll(".rr-copy").forEach(b=> b.addEventListener("click",(e)=>{ e.stopPropagation(); copyText(b.dataset.copy||"", b); }));
+  root.querySelectorAll(".rr-open").forEach(b=> b.addEventListener("click",(e)=>{ e.stopPropagation(); openLink(b.dataset.url||"", b); }));
   root.querySelectorAll(".rr-th").forEach(th=> th.addEventListener("click",()=>{
     const opEl=th.closest(".op"); if(!opEl) return; const opId=opEl.dataset.op; const col=th.dataset.col; const cur=SORT[opId]||{};
     SORT[opId]={ col, dir:(cur.col===col&&cur.dir!=="desc")?"desc":"asc" }; renderDetail();
