@@ -122,9 +122,19 @@
   .rr-note{font-size:10px;color:var(--muted);margin-top:5px}
   .rr-tabtools{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:8px 0 5px;flex-wrap:wrap}
   .rr-tabtools-r{display:inline-flex;gap:6px;flex-wrap:wrap}
-  .rr-filter-row th{position:static;background:var(--paper);padding:3px 6px;border-bottom:1px solid var(--line);font-weight:400}
-  .rr-filter{font-family:inherit;font-size:10px;color:var(--body);background:var(--paper);border:1px solid var(--slate);border-radius:4px;padding:2px 4px;max-width:150px;width:100%}
-  .rr-filter:focus{outline:1px solid var(--pass)}
+  /* filter band -- a dedicated filter area (styled distinct from the sticky header, not a 2nd header row) */
+  .rr-filter-row th{position:static;background:var(--paper);padding:5px 6px 7px;border-bottom:1px solid var(--line);border-top:1px solid var(--line);font-weight:400;vertical-align:top}
+  .rr-fwrap{position:relative;display:flex;align-items:center;min-width:0}
+  .rr-filter{width:100%;min-width:92px;max-width:200px;box-sizing:border-box;height:26px;font-family:inherit;font-size:10.5px;line-height:1;color:var(--body);background-color:var(--off);border:1px solid var(--slate);border-radius:5px;padding:0 8px;transition:border-color .12s,background-color .12s,box-shadow .12s;text-overflow:ellipsis;overflow:hidden;white-space:nowrap}
+  select.rr-filter{appearance:none;-webkit-appearance:none;-moz-appearance:none;cursor:pointer;padding-right:22px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpath d='M2 4l3 3 3-3' fill='none' stroke='%23888' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 7px center;background-size:9px}
+  .rr-filter::placeholder{color:var(--muted);opacity:.85}
+  .rr-filter:hover{border-color:var(--muted)}
+  .rr-filter:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 2px var(--pass-bg)}
+  .rr-fwrap.is-active .rr-filter{border-color:var(--accent);background-color:var(--pass-bg)}
+  .rr-fwrap.has-clear .rr-filter{padding-right:22px}
+  .rr-fclear{position:absolute;right:3px;top:50%;transform:translateY(-50%);display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border:none;background:transparent;color:var(--muted);font-size:13px;line-height:1;cursor:pointer;border-radius:3px;padding:0}
+  .rr-fclear:hover{color:var(--body);background:var(--off)}
+  .rr-fclear:focus{outline:none;color:var(--accent);box-shadow:0 0 0 2px var(--pass-bg)}
   .rr-chart-t{font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-bottom:2px}
   .rr-svg{width:100%;height:auto;max-height:200px;display:block}
   .rr-axis{font-size:8px;fill:var(--muted)}
@@ -276,7 +286,7 @@ const API_RENDER_CONFIG = {
 const SORT = {}; // per-operation table sort: { col, dir }
 const FILTERS = {}; // per-operation column filters: { col: value }
 
-const isNum=(v)=> typeof v=="number" && isFinite(v);
+const isNum=(v)=> typeof v==="number" && isFinite(v);
 const looksLikeMoney=(k)=> /(upb|balance|amount|amt|value|price|limit|dollar|proceeds|principal|unpaid)/i.test(k);
 const looksLikePercent=(k)=> /(rate|pct|percent|ratio|yield|coupon|dti|ltv)/i.test(k);
 const looksLikeIdOrUrl=(k)=> /(^id$|_id$|\bid\b|uri|url|link|timestamp|guid|uuid|arn|hash|s3)/i.test(k);
@@ -299,7 +309,7 @@ function fmtValue(key,v){
     if(Number.isInteger(v)||Math.abs(v)>=1000) return fmtNum(v);
     return String(v);
   }
-  if(typeof v=="boolean") return v?"Yes":"No";
+  if(typeof v==="boolean") return v?"Yes":"No";
   const s=String(v);
   if(/^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2})/.test(s)) return fmtDate(s);
   return s;
@@ -308,27 +318,27 @@ const truncate=(s,n)=>{ s=String(s); return s.length>n ? s.slice(0,n)+"…" : s;
 const humanizeKey=(k)=> String(k).replace(/[_\-]+/g," ").replace(/([a-z])([A-Z])/g,"$1 $2").replace(/\s+/g," ").replace(/\b\w/g,c=>c.toUpperCase()).trim();
 const safeJson=(d)=>{ try{ return JSON.stringify(d,null,2); }catch{ return String(d); } };
 
-const isRecordArray=(v)=> Array.isArray(v)&&v.length&&v.every(x=>x&&typeof x=="object"&&!Array.isArray(x));
+const isRecordArray=(v)=> Array.isArray(v)&&v.length&&v.every(x=>x&&typeof x==="object"&&!Array.isArray(x));
 function recordsFrom(data,depth){
   depth=depth||0;
   if(Array.isArray(data)) return isRecordArray(data)?data:null;
-  if(data&&typeof data=="object"&&depth<4){
+  if(data&&typeof data==="object"&&depth<4){
     const keys=Object.keys(data);
     // 1) a direct array-of-objects property (results, data, items, _embedded, ...)
     for(const k of keys){ if(isRecordArray(data[k])) return data[k]; }
     // 2) otherwise recurse into nested objects (e.g. HAL envelope results.embedded)
     for(const k of keys){
       const v=data[k];
-      if(v&&typeof v=="object"&&!Array.isArray(v)){ const f=recordsFrom(v,depth+1); if(f) return f; }
+      if(v&&typeof v==="object"&&!Array.isArray(v)){ const f=recordsFrom(v,depth+1); if(f) return f; }
     }
   }
   return null;
 }
 function isStatusObject(data){
-  if(!data||typeof data!="object"||Array.isArray(data)) return false;
+  if(!data||typeof data!=="object"||Array.isArray(data)) return false;
   const keys=Object.keys(data).map(k=>k.toLowerCase());
   const hasS3=keys.some(k=>k.includes("s3"));
-  const hasState=keys.some(k=>k=="currentstate"||k=="state"||k=="status");
+  const hasState=keys.some(k=>k==="currentstate"||k==="state"||k==="status");
   const hasReq=keys.some(k=>k.includes("request")&&k.includes("id"));
   const hasTs=keys.some(k=>k.includes("timestamp"));
   return Object.keys(data).length<=12 && (hasS3 || (hasState && (hasReq||hasTs)));
@@ -336,12 +346,12 @@ function isStatusObject(data){
 function detectType(data,opId,config){
   const cfg=config&&config[opId];
   if(cfg&&cfg.type) return cfg.type;
-  if(data==null||typeof data!="object") return "json";
+  if(data==null||typeof data!=="object") return "json";
   if(isStatusObject(data)) return "status";
   if(recordsFrom(data)) return "table";
-  if(!Array.isArray(data)&&typeof data=="object"){
+  if(!Array.isArray(data)&&typeof data==="object"){
     const vals=Object.values(data);
-    const scalarish=vals.filter(v=>v==null||typeof v!="object").length;
+    const scalarish=vals.filter(v=>v==null||typeof v!=="object").length;
     if(vals.length && scalarish>=Math.ceil(vals.length*0.6)) return "detail";
   }
   return "json";
@@ -354,12 +364,27 @@ function unionKeys(records){
 // per-column filtering + CSV export helpers
 function distinctVals(records,col){ const s=new Set(); for(const r of records){ const v=r[col]; s.add(v==null?"":String(v)); } return [...s]; }
 function colIsSelect(records,col){ return distinctVals(records,col).length<=40; }
+// context-aware "All <column>" default label for filter dropdowns (no parentheses)
+const FILTER_ACRONYMS=new Set(["msa","ltv","cltv","dti","upb","arm","harp","cas","cirt","rpl","lph","hera","zip","fips","apr","llpa","id","uic","poi"]);
+function pluralizeWord(w){
+  if(/[^aeiou]y$/i.test(w)) return w.slice(0,-1)+"ies";
+  if(/(s|x|z|ch|sh)$/i.test(w)) return w+"es";
+  return w+"s";
+}
+function allLabel(col){
+  const words=humanizeKey(col).split(" ").filter(Boolean);
+  if(!words.length) return "All";
+  return "All "+words.map((w,i)=>{
+    const base=FILTER_ACRONYMS.has(w.toLowerCase())?w.toUpperCase():w.toLowerCase();
+    return i===words.length-1?pluralizeWord(base):base;
+  }).join(" ");
+}
 function applyFilters(records,filters){
-  const active=Object.entries(filters||{}).filter(([,v])=>v!=null&&v!="");
+  const active=Object.entries(filters||{}).filter(([,v])=>v!=null&&v!=="");
   if(!active.length) return records;
   return records.filter(r=> active.every(([col,val])=>{
     const cell=r[col]==null?"":String(r[col]);
-    if(colIsSelect(records,col)) return cell==val;                 // exact for categorical columns
+    if(colIsSelect(records,col)) return cell===val;                 // exact for categorical columns
     return cell.toLowerCase().includes(String(val).toLowerCase());  // substring for high-cardinality
   }));
 }
@@ -370,7 +395,7 @@ function toCSV(records,cols){
 async function downloadCSV(records,cols,opId,btn){
   const csv=toCSV(records,cols);
   try{
-    if(app && typeof app.downloadFile=="function"){
+    if(app && typeof app.downloadFile==="function"){
       const r=await app.downloadFile({ contents:[{ type:"resource", resource:{ uri:"file:///fnma-"+opId+".csv", mimeType:"text/csv", text:csv } }] });
       if(!(r&&r.isError)) return;
     }
@@ -380,12 +405,12 @@ async function downloadCSV(records,cols,opId,btn){
 }
 function pickChart(records,cols,cfg){
   if(cfg&&cfg.chart===false) return null;
-  if(cfg&&cfg.chart&&typeof cfg.chart=="object"&&cfg.chart.x&&cfg.chart.y) return { x:cfg.chart.x, y:cfg.chart.y };
+  if(cfg&&cfg.chart&&typeof cfg.chart==="object"&&cfg.chart.x&&cfg.chart.y) return { x:cfg.chart.x, y:cfg.chart.y };
   if(records.length<2||records.length>30) return null;
   let x=null,y=null;
   for(const c of cols){
     const sample=records.map(r=>r[c]);
-    const allStr=sample.every(v=>typeof v=="string"||v==null);
+    const allStr=sample.every(v=>typeof v==="string"||v==null);
     const distinct=new Set(sample.map(v=>String(v))).size;
     if(!x&&allStr&&!looksLikeIdOrUrl(c)&&distinct===records.length) x=c;
   }
@@ -395,7 +420,7 @@ function pickChart(records,cols,cfg){
 function renderStatus(data){
   const keys=Object.keys(data);
   const byLc=(pred)=> keys.find(k=>pred(k.toLowerCase()));
-  const stateKey=byLc(k=>k=="currentstate"||k=="state"||k=="status");
+  const stateKey=byLc(k=>k==="currentstate"||k==="state"||k==="status");
   const state=stateKey?data[stateKey]:"";
   const done=/complete|success|ready|done|finished/i.test(String(state));
   const s3Key=byLc(k=>k.includes("s3"));
@@ -420,9 +445,9 @@ function renderStatus(data){
   </div>`;
 }
 function renderDetailCard(data){
-  const rows=Object.entries(data).filter(([k,v])=> v==null||typeof v!="object").map(([k,v])=>{
+  const rows=Object.entries(data).filter(([k,v])=> v==null||typeof v!=="object").map(([k,v])=>{
     let val;
-    if(typeof v=="string"&&(looksLikeIdOrUrl(k)||v.length>44)&&v.length>24)
+    if(typeof v==="string"&&(looksLikeIdOrUrl(k)||v.length>44)&&v.length>24)
       val=`<span class="rr-mono">${esc(truncate(v,44))}</span> <button type="button" class="rr-mini rr-copy" data-copy="${esc(v)}">Copy</button>`;
     else val=esc(fmtValue(k,v));
     return `<div class="rr-k">${esc(humanizeKey(k))}</div><div class="rr-v">${val}</div>`;
@@ -435,7 +460,7 @@ function renderTable(records,cols,sort,filters,opId){
   let rows=applyFilters(records,filters);
   const filtered=rows.length;
   if(sort&&sort.col){
-    const dir=sort.dir=="desc"?-1:1;
+    const dir=sort.dir==="desc"?-1:1;
     rows=rows.slice().sort((a,b)=>{
       const av=a[sort.col], bv=b[sort.col];
       if(isNum(av)&&isNum(bv)) return (av-bv)*dir;
@@ -443,17 +468,22 @@ function renderTable(records,cols,sort,filters,opId){
     });
   }
   const shown=rows.slice(0,CAP);
-  const hasFilters=filters&&Object.values(filters).some(v=>v!=null&&v!="");
+  const hasFilters=filters&&Object.values(filters).some(v=>v!=null&&v!=="");
   const countTxt=`Showing ${shown.length} of ${fmtNum(filtered)}${filtered!==total?` (filtered from ${fmtNum(total)})`:""} rows`;
   const toolbar=`<div class="rr-tabtools"><span class="rr-note" style="margin:0">${countTxt}</span><span class="rr-tabtools-r">${hasFilters?`<button type="button" class="rr-mini rr-clear-filters">Clear filters</button>`:""}<button type="button" class="rr-mini rr-csv-copy">Copy CSV</button><button type="button" class="rr-mini rr-csv-download">Download CSV</button></span></div>`;
-  const th=cols.map(c=>{ const arrow=(sort&&sort.col===c)?(sort.dir=="desc"?" ▾":" ▴"):""; return `<th class="rr-th" data-col="${esc(c)}">${esc(humanizeKey(c))}${arrow}</th>`; }).join("");
+  const th=cols.map(c=>{ const arrow=(sort&&sort.col===c)?(sort.dir==="desc"?" ▾":" ▴"):""; return `<th class="rr-th" data-col="${esc(c)}">${esc(humanizeKey(c))}${arrow}</th>`; }).join("");
   const fcells=cols.map(c=>{
     const cur=(filters&&filters[c])||"";
-    if(colIsSelect(records,c)){
-      const opts=distinctVals(records,c).sort().map(v=>`<option value="${esc(v)}"${v===cur?" selected":""}>${esc(v==""?"(blank)":v)}</option>`).join("");
-      return `<th class="rr-fcell"><select class="rr-filter" data-col="${esc(c)}"><option value="">(all)</option>${opts}</select></th>`;
+    const active=cur!=="";
+    const isSel=colIsSelect(records,c);
+    const wrapCls="rr-fwrap"+(active?" is-active":"")+((!isSel&&active)?" has-clear":"");
+    const titleAttr=active?` title="${esc(cur)}"`:"";
+    const lab=esc(humanizeKey(c));
+    if(isSel){
+      const opts=distinctVals(records,c).sort().map(v=>`<option value="${esc(v)}"${v===cur?" selected":""}>${esc(v===""?"Blank":v)}</option>`).join("");
+      return `<th class="rr-fcell"><div class="${wrapCls}"><select class="rr-filter" data-col="${esc(c)}" aria-label="Filter by ${lab}"${titleAttr}><option value="">${esc(allLabel(c))}</option>${opts}</select></div></th>`;
     }
-    return `<th class="rr-fcell"><input class="rr-filter" data-col="${esc(c)}" type="text" value="${esc(cur)}" placeholder="filter…" /></th>`;
+    return `<th class="rr-fcell"><div class="${wrapCls}"><input class="rr-filter" data-col="${esc(c)}" type="text" value="${esc(cur)}" placeholder="Filter ${esc(humanizeKey(c).toLowerCase())}…" aria-label="Filter by ${lab}"${titleAttr} />${active?`<button type="button" class="rr-fclear" data-col="${esc(c)}" title="Clear filter" aria-label="Clear ${lab} filter">&times;</button>`:""}</div></th>`;
   }).join("");
   const trs=shown.map(r=>`<tr>${cols.map(c=>`<td>${esc(fmtValue(c,r[c]))}</td>`).join("")}</tr>`).join("");
   const emptyRow=shown.length===0?`<tr><td colspan="${cols.length}" style="padding:12px;color:var(--muted)">No rows match the current filters.</td></tr>`:"";
@@ -481,9 +511,9 @@ function renderApiResult(data,opId,config){
   try{
     const cfg=(config&&config[opId])||{};
     const type=detectType(data,opId,config);
-    if(type=="status") return `<div class="rr-result">${renderStatus(data)}${rawDetails(data,false)}</div>`;
-    if(type=="detail") return `<div class="rr-result">${renderDetailCard(data)}${rawDetails(data,false)}</div>`;
-    if(type=="table"){
+    if(type==="status") return `<div class="rr-result">${renderStatus(data)}${rawDetails(data,false)}</div>`;
+    if(type==="detail") return `<div class="rr-result">${renderDetailCard(data)}${rawDetails(data,false)}</div>`;
+    if(type==="table"){
       const records=recordsFrom(data)||[];
       const cols=unionKeys(records);
       const chart=pickChart(records,cols,cfg);
@@ -507,7 +537,7 @@ function fallbackCopy(text,done){
 // Falls back to copying the URL if the host doesn't support openLink.
 async function openLink(url,btn){
   try{
-    if(app && typeof app.openLink=="function"){
+    if(app && typeof app.openLink==="function"){
       const r=await app.openLink({ url });
       if(!(r&&r.isError)) return;
     }
@@ -541,7 +571,7 @@ function render(){
   const root=document.getElementById("root");
   const apis = DATA?.apis||[];
   if(apis.length===0){ root.innerHTML='<div style="padding:26px 16px;color:var(--muted);text-align:center">No APIs found.</div>'; return; }
-  if(view=="detail" && selectedEntry()) renderDetail();
+  if(view==="detail" && selectedEntry()) renderDetail();
   else { view="list"; renderList(); }
 }
 
@@ -555,7 +585,7 @@ function renderList(){
 
   const sections = groupOrder(apis).map(g=>{
     const groupApis = visible.filter(a=>keyOf(a)===g);
-    const showEmpty = groupApis.length===0 && !query && groupBy=="businessLine" && EMPTY_GROUP_NOTE[g];
+    const showEmpty = groupApis.length===0 && !query && groupBy==="businessLine" && EMPTY_GROUP_NOTE[g];
     if(groupApis.length===0 && !showEmpty) return "";
     const body = showEmpty
       ? `<div class="empty-group">${esc(EMPTY_GROUP_NOTE[g])}</div>`
@@ -584,14 +614,14 @@ function renderList(){
   }).join("");
 
   root.innerHTML = `<div class="hd">
-      <div class="hd-top"><h1>Fannie Mae Public APIs <span style="font-size:9px;font-weight:400;letter-spacing:0;opacity:.55">v1.3</span></h1>${displayControlsHtml()}</div>
+      <div class="hd-top"><h1>Fannie Mae Public APIs <span style="font-size:9px;font-weight:400;letter-spacing:0;opacity:.55">v1.4</span></h1>${displayControlsHtml()}</div>
       <div class="stats"><span><b>${apis.length}</b> total APIs</span><span><b>${liveCount}</b> live in this connector</span>${downCount?`<span><b class="warn">${downCount}</b> unreachable</span>`:""}<span><b>${apis.length-liveCount-downCount}</b> catalog-only</span></div>
     </div>
     <div class="controls">
       <input type="text" id="q" placeholder="Search APIs by name, category, or description…" value="${esc(query)}" />
       <div class="seg">
-        <button type="button" data-group="businessLine" class="${groupBy=="businessLine"?"on":""}">Business line</button>
-        <button type="button" data-group="tag" class="${groupBy=="tag"?"on":""}">Function</button>
+        <button type="button" data-group="businessLine" class="${groupBy==="businessLine"?"on":""}">Business line</button>
+        <button type="button" data-group="tag" class="${groupBy==="tag"?"on":""}">Function</button>
       </div>
     </div>
     ${visible.length===0 ? '<div class="no-results">No APIs match your search.</div>' : sections}`;
@@ -695,11 +725,14 @@ function renderDetail(){
 
     // per-column filters + CSV export (present only when this op rendered a table)
     const opData = RESULTS[`${entry.name}::${op.id}`];
-    const recs = (opData && typeof opData=="object" && !("error" in opData)) ? recordsFrom(opData) : null;
+    const recs = (opData && typeof opData==="object" && !("error" in opData)) ? recordsFrom(opData) : null;
     if(recs){
       const fcols = unionKeys(recs);
       opEl.querySelectorAll(".rr-filter").forEach(el=>{
         el.addEventListener("change", ()=>{ FILTERS[op.id]=FILTERS[op.id]||{}; FILTERS[op.id][el.dataset.col]=el.value; renderDetail(); });
+      });
+      opEl.querySelectorAll(".rr-fclear").forEach(el=>{
+        el.addEventListener("click", (e)=>{ e.stopPropagation(); if(FILTERS[op.id]) delete FILTERS[op.id][el.dataset.col]; renderDetail(); });
       });
       const clr=opEl.querySelector(".rr-clear-filters");
       if(clr) clr.addEventListener("click", ()=>{ FILTERS[op.id]={}; renderDetail(); });
@@ -715,7 +748,7 @@ function renderDetail(){
   root.querySelectorAll(".rr-open").forEach(b=> b.addEventListener("click",(e)=>{ e.stopPropagation(); openLink(b.dataset.url||"", b); }));
   root.querySelectorAll(".rr-th").forEach(th=> th.addEventListener("click",()=>{
     const opEl=th.closest(".op"); if(!opEl) return; const opId=opEl.dataset.op; const col=th.dataset.col; const cur=SORT[opId]||{};
-    SORT[opId]={ col, dir:(cur.col===col&&cur.dir!="desc")?"desc":"asc" }; renderDetail();
+    SORT[opId]={ col, dir:(cur.col===col&&cur.dir!=="desc")?"desc":"asc" }; renderDetail();
   }));
 
   wireBack(root); wireDisplay(root);
@@ -727,12 +760,12 @@ function wireBack(scope){
 }
 
 (async()=>{
-  app=new App({name:"FnmaCatalog",version:"1.3.0"},{availableDisplayModes:["inline","fullscreen","pip"]},{autoResize:true});
-  const theme=()=>{try{document.documentElement.classList.toggle("dark",ctx().theme=="dark")}catch{}};
+  app=new App({name:"FnmaCatalog",version:"1.4.0"},{availableDisplayModes:["inline","fullscreen","pip"]},{autoResize:true});
+  const theme=()=>{try{document.documentElement.classList.toggle("dark",ctx().theme==="dark")}catch{}};
   app.ontoolresult=(result)=>{ try{ DATA=result?.structuredContent ?? JSON.parse(result.content[0].text); }catch{ DATA=null; } view="list"; selectedName=null; theme(); render(); };
   app.onhostcontextchanged=()=>{ theme(); render(); };
   await app.connect();
-  console.log("[fnma build] v1.3 (filters + csv)");
+  console.log("[fnma build] v1.4 (polished filter UI)");
   console.log("[fnma catalog] host availableDisplayModes:", ctx().availableDisplayModes, "| current:", ctx().displayMode);
   theme(); render();
 })();
