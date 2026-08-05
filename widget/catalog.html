@@ -306,12 +306,18 @@ const truncate=(s,n)=>{ s=String(s); return s.length>n ? s.slice(0,n)+"…" : s;
 const humanizeKey=(k)=> String(k).replace(/[_\-]+/g," ").replace(/([a-z])([A-Z])/g,"$1 $2").replace(/\s+/g," ").replace(/\b\w/g,c=>c.toUpperCase()).trim();
 const safeJson=(d)=>{ try{ return JSON.stringify(d,null,2); }catch{ return String(d); } };
 
-function recordsFrom(data){
-  if(Array.isArray(data)) return (data.length && data.every(x=>x&&typeof x==="object"&&!Array.isArray(x))) ? data : null;
-  if(data&&typeof data==="object"){
-    for(const k of Object.keys(data)){
+const isRecordArray=(v)=> Array.isArray(v)&&v.length&&v.every(x=>x&&typeof x==="object"&&!Array.isArray(x));
+function recordsFrom(data,depth){
+  depth=depth||0;
+  if(Array.isArray(data)) return isRecordArray(data)?data:null;
+  if(data&&typeof data==="object"&&depth<4){
+    const keys=Object.keys(data);
+    // 1) a direct array-of-objects property (results, data, items, _embedded, ...)
+    for(const k of keys){ if(isRecordArray(data[k])) return data[k]; }
+    // 2) otherwise recurse into nested objects (e.g. HAL envelope results.embedded)
+    for(const k of keys){
       const v=data[k];
-      if(Array.isArray(v)&&v.length&&v.every(x=>x&&typeof x==="object"&&!Array.isArray(x))) return v;
+      if(v&&typeof v==="object"&&!Array.isArray(v)){ const f=recordsFrom(v,depth+1); if(f) return f; }
     }
   }
   return null;
