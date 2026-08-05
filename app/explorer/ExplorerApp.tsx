@@ -36,6 +36,7 @@ interface Catalog {
   apis: ApiEntry[];
   businessLineOrder: string[];
 }
+interface Geom { x: number; y: number; w: number; h: number; }
 interface Panel {
   uid: string;
   apiName: string;
@@ -46,7 +47,9 @@ interface Panel {
   status: "loading" | "done" | "error";
   data?: any;
   error?: string;
+  x: number; y: number; w: number; h: number; z: number;
 }
+type SeedPanel = Omit<Panel, "x" | "y" | "w" | "h" | "z">;
 interface SavedQuery {
   id: string;
   name: string;
@@ -410,7 +413,7 @@ function ResultView({ data, title }: { data: any; title: string }) {
 }
 
 /* ------------------------------------------------------------- demo seed */
-const DEMO_PANELS: Panel[] = [
+const DEMO_PANELS: SeedPanel[] = [
   {
     uid: "demo1", apiName: "Refinance Application-Level Index API", opId: "getRaliAllWeeks", opLabel: "Get all weeks (2004-present)", method: "GET", params: {}, status: "done",
     data: [
@@ -451,6 +454,19 @@ function decodeWorkspace(s: string): { apiName: string; opId: string; params: Re
 }
 
 const SAVED_KEY = "fnma-explorer-saved-v1";
+const LAYOUT_KEY = "fnma-explorer-layout-v1";
+const MIN_W = 300, MIN_H = 180, DEF_H = 320, PAD = 12, GAP = 16;
+
+const sig = (p: { apiName: string; opId: string; params: Record<string, string> }) =>
+  `${p.apiName}|${p.opId}|${JSON.stringify(p.params || {})}`;
+
+function tilePos(index: number, wsW: number): Geom {
+  const w = Math.min(480, Math.max(320, wsW - PAD * 2));
+  const cols = Math.max(1, Math.floor((wsW - PAD) / (w + GAP)));
+  const col = index % cols, row = Math.floor(index / cols);
+  return { x: PAD + col * (w + GAP), y: PAD + row * (DEF_H + GAP), w, h: DEF_H };
+}
+function shortApi(name: string) { return name.replace(/ API$/, ""); }
 
 /* ============================================================= main app */
 export default function ExplorerApp() {
@@ -459,11 +475,16 @@ export default function ExplorerApp() {
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [groupBy, setGroupBy] = useState<"businessLine" | "tag">("businessLine");
+  const [selectedApiName, setSelectedApiName] = useState<string | null>(null);
   const [selected, setSelected] = useState<{ api: ApiEntry; op: Operation } | null>(null);
   const [composeParams, setComposeParams] = useState<Record<string, string>>({});
   const [panels, setPanels] = useState<Panel[]>([]);
   const [saved, setSaved] = useState<SavedQuery[]>([]);
   const restored = useRef(false);
+  const workspaceRef = useRef<HTMLDivElement | null>(null);
+  const panelsRef = useRef<Panel[]>([]);
+  const layoutRef = useRef<Record<string, Geom>>({});
+  useEffect(() => { panelsRef.current = panels; }, [panels]);
 
   /* load catalog */
   useEffect(() => {
@@ -473,13 +494,28 @@ export default function ExplorerApp() {
       .catch((e) => setLoadErr(String(e)));
   }, []);
 
-  /* load saved queries */
+  /* load saved queries + layout */
   useEffect(() => {
     try { const raw = localStorage.getItem(SAVED_KEY); if (raw) setSaved(JSON.parse(raw)); } catch { /* ignore */ }
+    try { const raw = localStorage.getItem(LAYOUT_KEY); if (raw) layoutRef.current = JSON.parse(raw) || {}; } catch { /* ignore */ }
   }, []);
   const persistSaved = useCallback((next: SavedQuery[]) => {
     setSaved(next);
     try { localStorage.setItem(SAVED_KEY, JSON.stringify(next)); } catch { /* ignore */ }
+  }, []);
+  const persistLayout = useCallback(() => {
+    try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(layoutRef.current)); } catch { /* ignore */ }
+  }, []);
+
+  const wsWidth = () => workspaceRef.current?.clientWidth || 900;
+
+  /* assign geometry to a list of seed panels (respect saved layout, else tile) */
+  const placePanels = useCallback((seeds: SeedPanel[]): Panel[] => {
+    const wsW = wsWidth();
+    return seeds.map((seed, i) => {
+      const g = layoutRef.current[sig(seed)] || tilePos(i, wsW);
+      return { ...seed, x: g.x, y: g.y, w: g.w, h: g.h, z: i + 1 };
+    });
   }, []);
 
   /* run a panel against the server */
@@ -500,8 +536,13 @@ export default function ExplorerApp() {
   }, []);
 
   const addPanel = useCallback((apiName: string, op: { id: string; label: string; method?: string }, params: Record<string, string>) => {
-    const panel: Panel = { uid: uid(), apiName, opId: op.id, opLabel: op.label, method: (op.method as any) || "GET", params, status: "loading" };
-    setPanels((ps) => [panel, ...ps]);
+    const seed: SeedPanel = { uid: uid(), apiName, opId: op.id, opLabel: op.label, method: (op.method as any) || "GET", params, status: "loading" };
+    const ps = panelsRef.current;
+    const wsW = wsWidth();
+    const g = layoutRef.current[sig(seed)] || tilePos(ps.length, wsW);
+    const z = ps.reduce((m, p) => Math.max(m, p.z), 0) + 1;
+    const panel: Panel = { ...seed, x: g.x, y: g.y, w: g.w, h: g.h, z };
+    setPanels((prev) => [...prev, panel]);
     runPanel(panel);
   }, [runPanel]);
 
@@ -509,22 +550,23 @@ export default function ExplorerApp() {
   useEffect(() => {
     if (restored.current || !catalog) return;
     restored.current = true;
-    if (searchParams.get("demo") === "1") { setPanels(DEMO_PANELS); return; }
+    if (searchParams.get("demo") === "1") { setPanels(placePanels(DEMO_PANELS)); return; }
     const w = searchParams.get("w");
     if (w) {
       const items = decodeWorkspace(w);
-      const built: Panel[] = items.map((it) => {
+      const seeds: SeedPanel[] = items.map((it) => {
         const api = catalog.apis.find((a) => a.name === it.apiName);
         const op = api?.operations?.find((o) => o.id === it.opId);
         return { uid: uid(), apiName: it.apiName, opId: it.opId, opLabel: op?.label || it.opId, method: (op?.method as any) || "GET", params: it.params, status: "loading" };
       });
+      const built = placePanels(seeds);
       setPanels(built);
       built.forEach(runPanel);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catalog]);
 
-  /* sync workspace -> URL */
+  /* sync workspace -> URL (op + params; geometry lives in localStorage) */
   useEffect(() => {
     if (!restored.current) return;
     const enc = encodeWorkspace(panels);
@@ -534,7 +576,96 @@ export default function ExplorerApp() {
     window.history.replaceState(null, "", url.toString());
   }, [panels]);
 
-  /* selecting an operation seeds the compose form with examples */
+  /* -------- canvas: bring-to-front, drag, resize, commit, reset -------- */
+  const bringToFront = useCallback((uidTarget: string) => {
+    setPanels((ps) => {
+      const maxZ = ps.reduce((m, p) => Math.max(m, p.z), 0);
+      const cur = ps.find((p) => p.uid === uidTarget);
+      if (cur && cur.z === maxZ) return ps; // already on top
+      return ps.map((p) => (p.uid === uidTarget ? { ...p, z: maxZ + 1 } : p));
+    });
+  }, []);
+
+  const commitGeom = useCallback((uidTarget: string, partial: Partial<Geom>) => {
+    setPanels((ps) => ps.map((p) => {
+      if (p.uid !== uidTarget) return p;
+      const np = { ...p, ...partial };
+      layoutRef.current[sig(np)] = { x: np.x, y: np.y, w: np.w, h: np.h };
+      return np;
+    }));
+    persistLayout();
+  }, [persistLayout]);
+
+  const startDrag = useCallback((e: React.PointerEvent, panel: Panel) => {
+    if (e.button !== 0) return;
+    if ((e.target as HTMLElement).closest("[data-nodrag]")) return; // header tool buttons
+    e.preventDefault();
+    e.stopPropagation();
+    const el = (e.currentTarget as HTMLElement).closest("[data-panel]") as HTMLElement | null;
+    if (!el) return;
+    bringToFront(panel.uid);
+    const startX = e.clientX, startY = e.clientY, origX = panel.x, origY = panel.y;
+    let last: Geom = { x: origX, y: origY, w: panel.w, h: panel.h };
+    document.body.style.userSelect = "none";
+    const move = (ev: PointerEvent) => {
+      const nx = Math.max(0, Math.min(origX + (ev.clientX - startX), 6000));
+      const ny = Math.max(0, Math.min(origY + (ev.clientY - startY), 6000));
+      el.style.left = nx + "px"; el.style.top = ny + "px";
+      last = { ...last, x: nx, y: ny };
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      document.body.style.userSelect = "";
+      commitGeom(panel.uid, { x: last.x, y: last.y });
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }, [bringToFront, commitGeom]);
+
+  const startResize = useCallback((e: React.PointerEvent, panel: Panel) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const el = (e.currentTarget as HTMLElement).closest("[data-panel]") as HTMLElement | null;
+    if (!el) return;
+    bringToFront(panel.uid);
+    const startX = e.clientX, startY = e.clientY, origW = panel.w, origH = panel.h;
+    const maxW = Math.max(MIN_W, wsWidth() - 8);
+    let last: Geom = { x: panel.x, y: panel.y, w: origW, h: origH };
+    document.body.style.userSelect = "none";
+    const move = (ev: PointerEvent) => {
+      const nw = Math.max(MIN_W, Math.min(origW + (ev.clientX - startX), maxW));
+      const nh = Math.max(MIN_H, Math.min(origH + (ev.clientY - startY), 1600));
+      el.style.width = nw + "px"; el.style.height = nh + "px";
+      last = { ...last, w: nw, h: nh };
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      document.body.style.userSelect = "";
+      commitGeom(panel.uid, { w: last.w, h: last.h });
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }, [bringToFront, commitGeom]);
+
+  const resetLayout = useCallback(() => {
+    const wsW = wsWidth();
+    setPanels((ps) => ps.map((p, i) => {
+      const g = tilePos(i, wsW);
+      layoutRef.current[sig(p)] = { x: g.x, y: g.y, w: g.w, h: g.h };
+      return { ...p, x: g.x, y: g.y, w: g.w, h: g.h, z: i + 1 };
+    }));
+    persistLayout();
+  }, [persistLayout]);
+
+  /* -------- selection -------- */
+  const selectApi = (api: ApiEntry) => {
+    if (!api.implemented) return;
+    setSelectedApiName(api.name);
+    if (selected && selected.api.name !== api.name) setSelected(null);
+  };
   const selectOp = (api: ApiEntry, op: Operation) => {
     setSelected({ api, op });
     const seed: Record<string, string> = {};
@@ -542,19 +673,19 @@ export default function ExplorerApp() {
     setComposeParams(seed);
   };
 
-  const runCompose = () => {
-    if (!selected) return;
-    addPanel(selected.api.name, selected.op, { ...composeParams });
-  };
+  const runCompose = () => { if (selected) addPanel(selected.api.name, selected.op, { ...composeParams }); };
   const saveCompose = () => {
     if (!selected) return;
     const item: SavedQuery = { id: uid(), name: `${shortApi(selected.api.name)} · ${selected.op.label}`, apiName: selected.api.name, opId: selected.op.id, opLabel: selected.op.label, params: { ...composeParams } };
     persistSaved([item, ...saved.filter((s) => !(s.opId === item.opId && JSON.stringify(s.params) === JSON.stringify(item.params)))]);
   };
-
   const runSaved = (q: SavedQuery) => addPanel(q.apiName, { id: q.opId, label: q.opLabel }, { ...q.params });
+  const starPanel = (panel: Panel) => {
+    const item: SavedQuery = { id: uid(), name: `${shortApi(panel.apiName)} · ${panel.opLabel}`, apiName: panel.apiName, opId: panel.opId, opLabel: panel.opLabel, params: panel.params };
+    persistSaved([item, ...saved.filter((s) => !(s.opId === item.opId && JSON.stringify(s.params) === JSON.stringify(item.params)))]);
+  };
 
-  /* ---------------------------------------------------------- rendering */
+  /* -------- derived -------- */
   const filteredApis = useMemo(() => {
     if (!catalog) return [];
     const q = query.trim().toLowerCase();
@@ -570,7 +701,11 @@ export default function ExplorerApp() {
     return keys.map((key) => ({ key, apis: filteredApis.filter((a) => keyOf(a) === key) })).filter((g) => g.apis.length);
   }, [catalog, filteredApis, groupBy]);
 
+  const selectedApi = useMemo(() => catalog?.apis.find((a) => a.name === selectedApiName) || null, [catalog, selectedApiName]);
   const liveCount = catalog?.apis.filter((a) => a.implemented && a.status !== "unreachable").length ?? 0;
+
+  const canvasW = panels.length ? Math.max(...panels.map((p) => p.x + p.w)) + 40 : 0;
+  const canvasH = panels.length ? Math.max(...panels.map((p) => p.y + p.h)) + 40 : 0;
 
   return (
     <div className={styles.wrap}>
@@ -581,13 +716,14 @@ export default function ExplorerApp() {
         </div>
         <div className={styles["head-actions"]}>
           <span className={styles["head-stat"]}>{catalog ? `${catalog.apis.length} APIs · ${liveCount} live` : "loading…"}</span>
-          {panels.length > 0 && <button className={styles["head-btn"]} onClick={() => { copy(window.location.href); }}>Copy share link</button>}
+          {panels.length > 0 && <button className={styles["head-btn"]} onClick={() => copy(window.location.href)}>Copy share link</button>}
           {panels.length > 0 && <button className={styles["head-btn"]} onClick={() => setPanels([])}>Clear board</button>}
         </div>
       </header>
 
-      <aside className={styles.side}>
-        <div className={styles["side-inner"]}>
+      {/* PANE 1 — API discovery */}
+      <aside className={styles.apis}>
+        <div className={styles["pane-inner"]}>
           <input className={styles.search} placeholder="Search APIs…" value={query} onChange={(e) => setQuery(e.target.value)} />
           <div className={styles.seg}>
             <button className={groupBy === "businessLine" ? styles.on : ""} onClick={() => setGroupBy("businessLine")}>Business line</button>
@@ -601,34 +737,24 @@ export default function ExplorerApp() {
               <div className={styles.grouplab}>{g.key} ({g.apis.length})</div>
               {g.apis.map((api) => {
                 const state = !api.implemented ? "static" : api.status === "unreachable" ? "down" : "live";
-                const isSel = selected?.api.name === api.name;
+                const isSel = selectedApiName === api.name;
                 return (
-                  <div key={api.name}>
-                    <button
-                      className={`${styles.apibtn} ${styles[state]} ${isSel ? styles.sel : ""}`}
-                      onClick={() => { if (api.implemented && api.operations?.length) selectOp(api, api.operations[0]); }}
-                      disabled={!api.implemented}
-                    >
-                      <div className={styles.an}>{api.name}</div>
-                      <div className={styles.ad}>{api.description}</div>
-                      <span className={`${styles.apill} ${styles[state]}`}>{state === "live" ? "Live" : state === "down" ? "Unreachable" : "Catalog only"}</span>
-                    </button>
-                    {isSel && (api.operations?.length || 0) > 1 && (
-                      <div style={{ margin: "0 0 8px 8px", display: "flex", flexDirection: "column", gap: 3 }}>
-                        {api.operations!.map((op) => (
-                          <button key={op.id} className={styles.mini} style={{ textAlign: "left", ...(selected?.op.id === op.id ? { borderColor: "var(--accent)", color: "var(--accent)" } : {}) }} onClick={() => selectOp(api, op)}>{op.label}</button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  <button
+                    key={api.name}
+                    className={`${styles.apibtn} ${styles[state]} ${isSel ? styles.sel : ""}`}
+                    onClick={() => selectApi(api)}
+                    disabled={!api.implemented}
+                  >
+                    <div className={styles.an}>{api.name}</div>
+                    <div className={styles.ad}>{api.description}</div>
+                    <span className={`${styles.apill} ${styles[state]}`}>{state === "live" ? "Live" : state === "down" ? "Unreachable" : "Catalog only"}</span>
+                  </button>
                 );
               })}
             </div>
           ))}
 
-          <div className={styles["saved-hd"]}>
-            <div className={styles.grouplab} style={{ margin: 0 }}>Saved queries</div>
-          </div>
+          <div className={styles.grouplab} style={{ marginTop: 16 }}>Saved queries</div>
           {saved.length === 0 ? (
             <div className={styles["empty-note"]}>Compose an operation and hit <b>Save</b> to pin it here. Saved queries persist in this browser.</div>
           ) : saved.map((q) => (
@@ -640,6 +766,40 @@ export default function ExplorerApp() {
         </div>
       </aside>
 
+      {/* PANE 2 — endpoint navigator */}
+      <nav className={styles.endpoints}>
+        {!selectedApi ? (
+          <div className={styles["ep-empty"]}>Select an API on the left to see its endpoints.</div>
+        ) : (
+          <>
+            <div className={styles["ep-head"]}>
+              <div className={styles["ep-title"]}>{shortApi(selectedApi.name)}</div>
+              <div className={styles["ep-sub"]}>Endpoints ({(selectedApi.operations || []).length})</div>
+              {selectedApi.status === "unreachable" && <div className={styles["ep-warn"]}>Upstream unreachable — calls will return an error.</div>}
+            </div>
+            <div className={styles["ep-list"]}>
+              {(selectedApi.operations || []).length === 0 ? (
+                <div className={styles["empty-note"]} style={{ padding: 12 }}>This API is catalog-only — no runnable endpoints.</div>
+              ) : (selectedApi.operations || []).map((op) => {
+                const on = selected?.op.id === op.id && selected?.api.name === selectedApi.name;
+                const method = (op.method || "GET").toUpperCase();
+                return (
+                  <button key={op.id} className={`${styles["ep-row"]} ${on ? styles["ep-on"] : ""}`} onClick={() => selectOp(selectedApi, op)}>
+                    <span className={`${styles["ep-method"]} ${method === "POST" ? styles.post : ""}`}>{method}</span>
+                    <span className={styles["ep-text"]}>
+                      <span className={styles["ep-name"]}>{op.label}</span>
+                      {op.note && <span className={styles["ep-desc"]}>{op.note}</span>}
+                      {op.params.length > 0 && <span className={styles["ep-params-hint"]}>{op.params.map((p) => p.name).join(", ")}</span>}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </nav>
+
+      {/* PANE 3 — request config + result workspace */}
       <main className={styles.main}>
         {selected && (
           <div className={styles.compose}>
@@ -672,46 +832,51 @@ export default function ExplorerApp() {
 
         <div className={styles["dash-hd"]}>
           <div className={styles["dash-title"]}>Workspace {panels.length > 0 ? `(${panels.length})` : ""}</div>
+          {panels.length > 0 && <button className={styles.mini} onClick={resetLayout}>Reset layout</button>}
         </div>
 
-        {panels.length === 0 ? (
-          <div className={styles.blank}>
-            <h2>Build a workspace</h2>
-            <p>Pick an API on the left, choose an operation, and run it — each run becomes a panel here so you can compare results side by side. Save the queries you use often, and the <b>share link</b> re-opens this exact board.</p>
-          </div>
-        ) : (
-          <div className={styles.dash}>
-            {panels.map((panel) => (
-              <section key={panel.uid} className={styles.panel}>
-                <div className={styles["panel-hd"]}>
-                  <div className={styles.pt}>
-                    <div className={styles.papi}>{shortApi(panel.apiName)}</div>
-                    <div className={styles.plabel}>{panel.opLabel}</div>
-                    {Object.keys(panel.params).length > 0 && (
-                      <div className={styles.pparams}>{Object.entries(panel.params).filter(([, v]) => v !== "").map(([k, v]) => `${k}=${truncate(v, 24)}`).join("  ")}</div>
-                    )}
+        <div className={styles.workspace} ref={workspaceRef}>
+          {panels.length === 0 ? (
+            <div className={styles.blank}>
+              <h2>Build a workspace</h2>
+              <p>Pick an API, choose an endpoint, and run it — each run becomes a panel on this canvas. Drag panels by their header, resize from the bottom-right corner, and the <b>share link</b> re-opens this exact board.</p>
+            </div>
+          ) : (
+            <div className={styles.canvas} style={{ width: canvasW, height: canvasH }}>
+              {panels.map((panel) => (
+                <section
+                  key={panel.uid}
+                  data-panel
+                  className={styles.panel}
+                  style={{ left: panel.x, top: panel.y, width: panel.w, height: panel.h, zIndex: panel.z }}
+                  onPointerDown={() => bringToFront(panel.uid)}
+                >
+                  <div className={styles["panel-hd"]} onPointerDown={(e) => startDrag(e, panel)}>
+                    <div className={styles.pt}>
+                      <div className={styles.papi}>{shortApi(panel.apiName)}</div>
+                      <div className={styles.plabel}>{panel.opLabel}</div>
+                      {Object.keys(panel.params).length > 0 && (
+                        <div className={styles.pparams}>{Object.entries(panel.params).filter(([, v]) => v !== "").map(([k, v]) => `${k}=${truncate(v, 24)}`).join("  ")}</div>
+                      )}
+                    </div>
+                    <div className={styles["panel-tools"]} data-nodrag>
+                      <button className={styles.ptool} title="Re-run" onClick={() => runPanel(panel)}>↻</button>
+                      <button className={styles.ptool} title="Save query" onClick={() => starPanel(panel)}>☆</button>
+                      <button className={`${styles.ptool} ${styles.danger}`} title="Remove" onClick={() => setPanels((ps) => ps.filter((p) => p.uid !== panel.uid))}>&times;</button>
+                    </div>
                   </div>
-                  <div className={styles["panel-tools"]}>
-                    <button className={styles.ptool} title="Re-run" onClick={() => runPanel(panel)}>↻</button>
-                    <button className={styles.ptool} title="Save query" onClick={() => {
-                      const item: SavedQuery = { id: uid(), name: `${shortApi(panel.apiName)} · ${panel.opLabel}`, apiName: panel.apiName, opId: panel.opId, opLabel: panel.opLabel, params: panel.params };
-                      persistSaved([item, ...saved.filter((s) => !(s.opId === item.opId && JSON.stringify(s.params) === JSON.stringify(item.params)))]);
-                    }}>☆</button>
-                    <button className={`${styles.ptool} ${styles.danger}`} title="Remove" onClick={() => setPanels((ps) => ps.filter((p) => p.uid !== panel.uid))}>&times;</button>
+                  <div className={styles["panel-body"]}>
+                    {panel.status === "loading" && <div className={styles["panel-loading"]}>Running…</div>}
+                    {panel.status === "error" && <div className={styles["panel-error"]}>{panel.error}</div>}
+                    {panel.status === "done" && <ResultView data={panel.data} title={`${panel.opId}`} />}
                   </div>
-                </div>
-                <div className={styles["panel-body"]}>
-                  {panel.status === "loading" && <div className={styles["panel-loading"]}>Running…</div>}
-                  {panel.status === "error" && <div className={styles["panel-error"]}>{panel.error}</div>}
-                  {panel.status === "done" && <ResultView data={panel.data} title={`${panel.opId}`} />}
-                </div>
-              </section>
-            ))}
-          </div>
-        )}
+                  <div className={styles["resize-handle"]} title="Drag to resize" onPointerDown={(e) => startResize(e, panel)} aria-hidden="true" />
+                </section>
+              ))}
+            </div>
+          )}
+        </div>
       </main>
     </div>
   );
 }
-
-function shortApi(name: string) { return name.replace(/ API$/, ""); }
