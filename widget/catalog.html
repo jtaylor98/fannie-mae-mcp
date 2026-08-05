@@ -37,6 +37,11 @@
   .disp-btn:hover{color:var(--body);border-color:var(--muted)}
   .disp-btn:active{opacity:.65}
   .disp-btn > span[aria-hidden]{font-size:12px}
+  .hd-right{display:inline-flex;align-items:center;gap:6px;flex:0 0 auto;flex-wrap:wrap}
+  .app-link{display:inline-flex;align-items:center;gap:5px;font-family:inherit;font-size:10.5px;font-weight:700;color:var(--paper);background:var(--accent);border:1px solid var(--accent);border-radius:6px;padding:5px 10px;cursor:pointer;line-height:1}
+  .app-link:hover{opacity:.9}
+  .app-link:active{opacity:.7}
+  .app-link > span[aria-hidden]{font-size:12px}
   .controls{display:flex;gap:8px;align-items:center;margin:8px 16px 4px;flex-wrap:wrap}
   .controls input{flex:1 1 220px;min-width:0;border:1px solid var(--slate);border-radius:6px;padding:7px 10px;font-size:12px;background:var(--paper);color:var(--body)}
   .controls input:focus{outline:2px solid var(--pass);outline-offset:-1px}
@@ -208,6 +213,18 @@ function displayControlsHtml(){
 function wireDisplay(scope){
   (scope||document).querySelectorAll(".disp-btn").forEach(b=>{
     b.addEventListener("click",()=>{ try{ app.requestDisplayMode&&app.requestDisplayMode(b.dataset.mode); }catch(e){ console.warn("[fnma] requestDisplayMode failed:",e); } });
+  });
+}
+// "Open full app" -> launches the standalone Explorer (server-injected absolute
+// URL). Reuses openLink (host app.openLink with copy fallback). Omitted when the
+// server didn't supply a URL (e.g. local dev without VERCEL_URL/EXPLORER_BASE_URL).
+function appLinkHtml(){
+  const u=DATA&&DATA.explorerUrl;
+  return u?`<button type="button" class="app-link" data-url="${esc(u)}" title="Open the full Fannie Mae API Explorer"><span aria-hidden="true">⧉</span><span class="disp-lab">Open full app</span></button>`:"";
+}
+function wireAppLink(scope){
+  (scope||document).querySelectorAll(".app-link").forEach(b=>{
+    b.addEventListener("click",()=>{ openLink(b.dataset.url||"", b); });
   });
 }
 
@@ -599,7 +616,7 @@ function renderList(){
   }).join("");
 
   root.innerHTML = `<div class="hd">
-      <div class="hd-top"><h1>Fannie Mae Public APIs <span style="font-size:9px;font-weight:400;letter-spacing:0;opacity:.55">v1.5</span></h1>${displayControlsHtml()}</div>
+      <div class="hd-top"><h1>Fannie Mae Public APIs <span style="font-size:9px;font-weight:400;letter-spacing:0;opacity:.55">v1.6</span></h1><div class="hd-right">${appLinkHtml()}${displayControlsHtml()}</div></div>
       <div class="stats"><span><b>${apis.length}</b> total APIs</span><span><b>${liveCount}</b> live in this connector</span>${downCount?`<span><b class="warn">${downCount}</b> unreachable</span>`:""}<span><b>${apis.length-liveCount-downCount}</b> catalog-only</span></div>
     </div>
     <div class="controls">
@@ -626,7 +643,7 @@ function renderList(){
       if(freshInput){ freshInput.focus(); freshInput.setSelectionRange(query.length, query.length); }
     });
   }
-  wireDisplay(root);
+  wireDisplay(root); wireAppLink(root);
 }
 
 function renderDetail(){
@@ -636,12 +653,12 @@ function renderDetail(){
 
   const head = `<div class="hd"><div class="hd-top">
       <div class="hd-left"><button type="button" class="back-btn">← All APIs</button><div class="detail-h1">${esc(entry.name)}</div></div>
-      ${displayControlsHtml()}
+      <div class="hd-right">${appLinkHtml()}${displayControlsHtml()}</div>
     </div><div class="desc">${esc(entry.description)}</div></div>`;
 
   if(!entry.implemented){
     root.innerHTML = head + `<div class="not-implemented">This API isn't wired up to live data in this connector yet -- catalog entry only.</div>`;
-    wireBack(root); wireDisplay(root); return;
+    wireBack(root); wireDisplay(root); wireAppLink(root); return;
   }
 
   const downBanner = entry.status === "unreachable"
@@ -736,7 +753,7 @@ function renderDetail(){
     SORT[opId]={ col, dir:(cur.col===col&&cur.dir!=="desc")?"desc":"asc" }; renderDetail();
   }));
 
-  wireBack(root); wireDisplay(root);
+  wireBack(root); wireDisplay(root); wireAppLink(root);
 }
 
 function wireBack(scope){
@@ -745,12 +762,12 @@ function wireBack(scope){
 }
 
 (async()=>{
-  app=new App({name:"FnmaCatalog",version:"1.5.0"},{availableDisplayModes:["inline","fullscreen","pip"]},{autoResize:true});
+  app=new App({name:"FnmaCatalog",version:"1.6.0"},{availableDisplayModes:["inline","fullscreen","pip"]},{autoResize:true});
   const theme=()=>{try{document.documentElement.classList.toggle("dark",ctx().theme==="dark")}catch{}};
   app.ontoolresult=(result)=>{ try{ DATA=result?.structuredContent ?? JSON.parse(result.content[0].text); }catch{ DATA=null; } view="list"; selectedName=null; theme(); render(); };
   app.onhostcontextchanged=()=>{ theme(); render(); };
   await app.connect();
-  console.log("[fnma build] v1.5 (filter default: All)");
+  console.log("[fnma build] v1.6 (open full app)");
   console.log("[fnma catalog] host availableDisplayModes:", ctx().availableDisplayModes, "| current:", ctx().displayMode);
   theme(); render();
 })();

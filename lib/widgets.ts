@@ -9,6 +9,23 @@ const widgetUri = (name: string) => `ui://fnma/${name}.html`;
 const widgetHtml = (name: string) =>
   Buffer.from((WIDGETS as Record<string, string>)[name], "base64").toString("utf8");
 
+/**
+ * Absolute URL of the standalone Explorer app, for the widget's "Open full app"
+ * button. A sandboxed ui:// widget can't resolve a relative link or know the
+ * deployment origin itself, so the server injects it. Prefers an explicit
+ * override, then Vercel's stable production domain, then the current
+ * deployment. Null when none is set (e.g. local dev) -- the widget then simply
+ * omits the button.
+ */
+function explorerUrl(): string | null {
+  const base =
+    process.env.EXPLORER_BASE_URL ||
+    (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "") ||
+    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "");
+  if (!base) return null;
+  return `${base.replace(/\/+$/, "")}/explorer`;
+}
+
 export function registerWidgets(server: any) {
   server.registerTool(
     "fnma_show_catalog",
@@ -27,7 +44,7 @@ export function registerWidgets(server: any) {
     async () => {
       return {
         content: [{ type: "text", text: `Rendered the Fannie Mae API catalog (${API_CATALOG.length} APIs). Don't restate the list.` }],
-        structuredContent: { apis: API_CATALOG.map(withBusinessLine), businessLineOrder: BUSINESS_LINE_ORDER },
+        structuredContent: { apis: API_CATALOG.map(withBusinessLine), businessLineOrder: BUSINESS_LINE_ORDER, explorerUrl: explorerUrl() },
         _meta: { ui: { resourceUri: widgetUri("catalog") } },
       };
     }
