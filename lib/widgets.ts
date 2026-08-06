@@ -101,6 +101,38 @@ export function registerWidgets(server: any) {
     }
   );
 
+  // --- NEW: docked fullscreen Explorer (additive; does not affect the catalog) ---
+  // Renders widget/catalog-explorer.html as a large, docked, in-conversation
+  // workspace (APIs | Endpoints | compose + tabbed results). Same data as
+  // fnma_show_catalog; runs operations through the existing call_fnma_api tool.
+  // Fullscreen is still gated by Claude client bug anthropics/claude-ai-mcp#636
+  // for remote transports, so today it renders inline; the docked fullscreen
+  // path lights up when that client bug clears.
+  server.registerTool(
+    "fnma_show_explorer",
+    {
+      title: "Open the Fannie Mae API Explorer (fullscreen workspace)",
+      description:
+        "Open the Fannie Mae API catalog as a large, docked, in-conversation " +
+        "workspace: browse APIs, pick an endpoint, run it live, and view results " +
+        "as tabs (table/chart/filters/CSV). Same data as fnma_show_catalog; use " +
+        "when the user wants a bigger, explorer-style surface. No parameters.",
+      inputSchema: {},
+      _meta: { ui: { resourceUri: widgetUri("catalog-explorer") } },
+    },
+    async () => {
+      return {
+        content: [{ type: "text", text: `Opened the Fannie Mae API Explorer (${API_CATALOG.length} APIs). Don't restate the list.` }],
+        structuredContent: {
+          apis: API_CATALOG.map(withBusinessLine),
+          businessLineOrder: BUSINESS_LINE_ORDER,
+          explorerUrl: explorerUrl(),
+        },
+        _meta: { ui: { resourceUri: widgetUri("catalog-explorer") } },
+      };
+    }
+  );
+
   server.registerResource(
     "Fannie Mae catalog widget",
     widgetUri("catalog"),
@@ -113,5 +145,12 @@ export function registerWidgets(server: any) {
     widgetUri("api-detail"),
     { title: "Fannie Mae API detail", mimeType: APP_MIME },
     async () => ({ contents: [{ uri: widgetUri("api-detail"), mimeType: APP_MIME, text: widgetHtml("api-detail") }] })
+  );
+
+  server.registerResource(
+    "Fannie Mae API Explorer widget",
+    widgetUri("catalog-explorer"),
+    { title: "Fannie Mae API Explorer", mimeType: APP_MIME },
+    async () => ({ contents: [{ uri: widgetUri("catalog-explorer"), mimeType: APP_MIME, text: widgetHtml("catalog-explorer") }] })
   );
 }
