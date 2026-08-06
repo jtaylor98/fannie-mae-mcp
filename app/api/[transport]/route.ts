@@ -68,6 +68,17 @@ const handler = createMcpHandler(
   },
   {},
   {
+    // Redis-backed streaming so the server->client SSE / notification stream
+    // survives Vercel's per-request serverless instances. Without a Redis URL
+    // that stream can't be held across instances, so the capability refresh the
+    // Claude client performs when an MCP-App widget enters FULLSCREEN fails
+    // ("Unable to reach Fannie Mae MCP") even though every POST returns 200 --
+    // this is why fullscreen was blocked while a stateful remote connector
+    // (e.g. Connectry) fullscreens fine with the same ui:// mcp-app mechanism.
+    // mcp-handler defaults redisUrl to process.env.REDIS_URL || process.env.KV_URL;
+    // provision a Redis instance (e.g. Upstash) and set REDIS_URL in Vercel to
+    // activate. No-op / unchanged (stateless) when the env var is unset.
+    redisUrl: process.env.REDIS_URL || process.env.KV_URL,
     basePath: "/api",
     verboseLogs: true,
     onEvent: (event) => {
