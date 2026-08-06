@@ -9,6 +9,18 @@ const widgetUri = (name: string) => `ui://fnma/${name}.html`;
 const widgetHtml = (name: string) =>
   Buffer.from((WIDGETS as Record<string, string>)[name], "base64").toString("utf8");
 
+// Minimal _meta.ui so Claude sees these as *declared* MCP Apps rather than bare
+// inline tool-result widgets -- an experiment to check whether that declaration
+// is what earns the host's expand/fullscreen affordance (a working remote app,
+// Connectry's cockpit, gets an expand control here; ours currently doesn't).
+// Kept intentionally minimal: NO `csp` (these widgets are styled with inline
+// <style>, run an inline <script>, and use data: URLs -- declaring a partial CSP
+// would block all of that and break the inline render that currently works) and
+// NO `domain` (it's a host-computed signed subdomain; a wrong value breaks
+// rendering). Escalate to those only if prefersBorder-presence alone doesn't
+// surface the expand control.
+const APP_UI_META = { ui: { prefersBorder: true } };
+
 /**
  * Absolute URL of the standalone Explorer app, for the widget's "Open full app"
  * button. A sandboxed ui:// widget can't resolve a relative link or know the
@@ -137,20 +149,20 @@ export function registerWidgets(server: any) {
     "Fannie Mae catalog widget",
     widgetUri("catalog"),
     { title: "Fannie Mae API catalog", mimeType: APP_MIME },
-    async () => ({ contents: [{ uri: widgetUri("catalog"), mimeType: APP_MIME, text: widgetHtml("catalog") }] })
+    async () => ({ contents: [{ uri: widgetUri("catalog"), mimeType: APP_MIME, text: widgetHtml("catalog"), _meta: APP_UI_META }] })
   );
 
   server.registerResource(
     "Fannie Mae API detail widget",
     widgetUri("api-detail"),
     { title: "Fannie Mae API detail", mimeType: APP_MIME },
-    async () => ({ contents: [{ uri: widgetUri("api-detail"), mimeType: APP_MIME, text: widgetHtml("api-detail") }] })
+    async () => ({ contents: [{ uri: widgetUri("api-detail"), mimeType: APP_MIME, text: widgetHtml("api-detail"), _meta: APP_UI_META }] })
   );
 
   server.registerResource(
     "Fannie Mae API Explorer widget",
     widgetUri("catalog-explorer"),
     { title: "Fannie Mae API Explorer", mimeType: APP_MIME },
-    async () => ({ contents: [{ uri: widgetUri("catalog-explorer"), mimeType: APP_MIME, text: widgetHtml("catalog-explorer") }] })
+    async () => ({ contents: [{ uri: widgetUri("catalog-explorer"), mimeType: APP_MIME, text: widgetHtml("catalog-explorer"), _meta: APP_UI_META }] })
   );
 }
