@@ -282,7 +282,7 @@ if(!DEV){
     constructor(info, caps, opts){ this._mode="inline"; this._modes=["inline","fullscreen","pip"]; this.ontoolresult=null; this.onhostcontextchanged=null; }
     getHostContext(){ return { displayMode:this._mode, availableDisplayModes:this._modes, theme:(matchMedia&&matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light" }; }
     async connect(){ setTimeout(()=>{ this.ontoolresult && this.ontoolresult({ structuredContent:SAMPLE }); }, 0); }
-    requestDisplayMode(mode){ this._mode=mode; this.onhostcontextchanged && this.onhostcontextchanged(); return {}; }
+    requestDisplayMode(arg){ this._mode=(arg&&arg.mode)||arg; this.onhostcontextchanged && this.onhostcontextchanged(); return {}; }
     async callServerTool({name,arguments:args}){ await new Promise(r=>setTimeout(r,140)); return sampleResult(args&&args.operation_id); }
     async openLink({url}){ try{ window.open(url,"_blank"); }catch(e){} return {}; }
     async downloadFile(){ return { isError:true }; } // force clipboard fallback in dev
@@ -321,7 +321,7 @@ function displayControlsHtml(){
 }
 function wireDisplay(scope){
   (scope||document).querySelectorAll(".disp-btn").forEach(b=>{
-    b.addEventListener("click",()=>{ try{ app.requestDisplayMode&&app.requestDisplayMode(b.dataset.mode); }catch(e){ console.warn("[fnma] requestDisplayMode failed:",e); } });
+    b.addEventListener("click",()=>{ try{ app.requestDisplayMode&&app.requestDisplayMode({ mode: b.dataset.mode }); }catch(e){ console.warn("[fnma] requestDisplayMode failed:",e); } });
   });
 }
 function appLinkHtml(){
