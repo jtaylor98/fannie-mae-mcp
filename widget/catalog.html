@@ -212,7 +212,7 @@ function displayControlsHtml(){
 }
 function wireDisplay(scope){
   (scope||document).querySelectorAll(".disp-btn").forEach(b=>{
-    b.addEventListener("click",()=>{ try{ app.requestDisplayMode&&app.requestDisplayMode(b.dataset.mode); }catch(e){ console.warn("[fnma] requestDisplayMode failed:",e); } });
+    b.addEventListener("click",()=>{ try{ app.requestDisplayMode&&app.requestDisplayMode({ mode: b.dataset.mode }); }catch(e){ console.warn("[fnma] requestDisplayMode failed:",e); } });
   });
 }
 // "Open full app" -> launches the standalone Explorer (server-injected absolute
