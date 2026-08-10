@@ -157,19 +157,31 @@
   .tabpanel-empty{padding:26px 16px;color:var(--muted);font-size:12px;text-align:center}
 
   /* ---- compact inline "cockpit" panel (default inline state) ---- */
-  .panel-card{max-width:520px;margin:0 auto;padding:16px 18px}
-  .pk-title{font-size:15px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.03em;line-height:1.2}
-  .pk-sub{font-size:11.5px;color:var(--muted);margin-top:5px}
-  .pk-sub b{color:var(--body)}
-  .pk-sub b.warn{color:var(--watch)}
-  .pk-chips{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 4px}
-  .pk-chip{font-size:10.5px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:3px 9px;background:var(--off)}
-  .pk-chip b{color:var(--body)}
-  .pk-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px}
-  .pk-primary{border:none;border-radius:6px;padding:8px 16px;font-size:12px;font-weight:700;background:var(--accent);color:var(--paper);cursor:pointer;font-family:inherit}
-  .pk-primary:hover{opacity:.9}
+  .panel-card{max-width:520px;margin:0 auto;padding:20px 22px 18px}
+  .pk-title{font-size:15px;font-weight:800;color:var(--accent);text-transform:uppercase;letter-spacing:.05em;line-height:1.2}
+  /* status summary: colored dots make live/down/catalog-only scannable at a glance */
+  .pk-stats{display:flex;align-items:center;flex-wrap:wrap;gap:7px 14px;margin-top:11px}
+  .pk-stat{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;color:var(--muted);white-space:nowrap;line-height:1}
+  .pk-stat b{color:var(--body);font-weight:700}
+  .pk-dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto;box-shadow:0 0 0 3px var(--off)}
+  .pk-dot.ok{background:var(--pass)}
+  .pk-dot.down{background:var(--watch)}
+  .pk-dot.static{background:var(--slate)}
+  .pk-total{font-size:11.5px;color:var(--muted);font-weight:600}
+  .pk-chips{display:flex;flex-wrap:wrap;gap:6px;margin:15px 0 2px}
+  .pk-chip{font-size:10.5px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:4px 11px;background:var(--off)}
+  .pk-chip b{color:var(--body);font-weight:700}
+  .pk-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:20px}
+  /* consistent button geometry across the primary + both secondaries */
+  .pk-primary,.panel-card .pk-actions .disp-btn,.panel-card .pk-actions .app-link{height:34px;border-radius:8px;box-sizing:border-box;display:inline-flex;align-items:center;line-height:1}
+  .pk-primary{border:none;padding:0 16px;font-size:12px;font-weight:700;background:var(--accent);color:var(--paper);cursor:pointer;font-family:inherit;box-shadow:0 1px 2px rgba(5,49,77,.18)}
+  .pk-primary:hover{opacity:.92}
   .pk-primary:active{transform:scale(.98)}
-  .pk-note{font-size:10px;color:var(--muted);line-height:1.5;margin-top:11px}
+  /* scoped secondaries: identical outline treatment, subordinate to the navy primary */
+  .panel-card .pk-actions .disp-btn,.panel-card .pk-actions .app-link{padding:0 13px;font-size:11px;font-weight:700;color:var(--muted);background:var(--paper);border:1px solid var(--slate);gap:6px}
+  .panel-card .pk-actions .disp-btn:hover,.panel-card .pk-actions .app-link:hover{color:var(--body);border-color:var(--muted);opacity:1}
+  .panel-card .pk-actions .disp-btn>span[aria-hidden],.panel-card .pk-actions .app-link>span[aria-hidden]{font-size:12px}
+  .pk-note{font-size:10px;color:var(--muted);line-height:1.55;margin-top:14px}
   .pk-note b{color:var(--body);font-weight:700}
 
   /* ================= ported v1.6 result renderer (verbatim from catalog.html) ================= */
@@ -716,9 +728,15 @@ function panelHtml(apis){
     const n = apis.filter(a=>keyOf(a)===g).length;
     return n?`<span class="pk-chip">${esc(g)} <b>${n}</b></span>`:"";
   }).join("");
+  const stats = [
+    `<span class="pk-total">${apis.length} APIs</span>`,
+    `<span class="pk-stat"><span class="pk-dot ok"></span><b>${live.length}</b> live</span>`,
+    down.length?`<span class="pk-stat"><span class="pk-dot down"></span><b>${down.length}</b> down</span>`:"",
+    staticN?`<span class="pk-stat"><span class="pk-dot static"></span><b>${staticN}</b> catalog-only</span>`:""
+  ].filter(Boolean).join("");
   return `<div class="panel-card">
     <div class="pk-title">Fannie Mae API Explorer</div>
-    <div class="pk-sub">${apis.length} APIs · <b>${live.length}</b> live${down.length?` · <b class="warn">${down.length}</b> down`:""}${staticN?` · ${staticN} catalog-only`:""}</div>
+    <div class="pk-stats">${stats}</div>
     <div class="pk-chips">${chips}</div>
     <div class="pk-actions">
       <button type="button" class="pk-primary" data-open-workspace>Open Explorer</button>
