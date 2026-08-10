@@ -145,6 +145,39 @@ export function registerWidgets(server: any) {
     }
   );
 
+  // --- NEW: Business Dashboard (additive; business-user, task-oriented surface) ---
+  // Renders widget/dashboard.html: a "What would you like to do?" workflow launcher.
+  // V1 workflow "Property & Loan Snapshot" takes a property address and shows the
+  // applicable conforming loan limit, HomeReady income limit, and Opportunity Zone
+  // designation (with optional deal-detail comparisons). It runs the underlying
+  // operations live through the existing call_fnma_api tool; the server only needs
+  // to inject explorerUrl for the "Open the API Explorer" escape hatch.
+  server.registerTool(
+    "fnma_show_dashboard",
+    {
+      title: "Open the Fannie Mae Business Dashboard (task-oriented, business users)",
+      description:
+        "Open the Fannie Mae Business Dashboard: a business-user, task-oriented " +
+        "surface (as opposed to the API-oriented catalog/Explorer). V1 workflow " +
+        "'Property & Loan Snapshot' takes a property address and shows the " +
+        "applicable conforming loan limit, HomeReady income limit, and Opportunity " +
+        "Zone designation for that location, with optional comparison against " +
+        "deal details (qualifying income, loan amount, units). Use for " +
+        "business-user requests like 'business dashboard', 'property/loan " +
+        "snapshot', or 'what's the loan limit / income limit / opportunity-zone " +
+        "status for <address>'. No parameters.",
+      inputSchema: {},
+      _meta: { ui: { resourceUri: widgetUri("dashboard") } },
+    },
+    async () => {
+      return {
+        content: [{ type: "text", text: `Opened the Fannie Mae Business Dashboard. Don't restate its contents.` }],
+        structuredContent: { explorerUrl: explorerUrl() },
+        _meta: { ui: { resourceUri: widgetUri("dashboard") } },
+      };
+    }
+  );
+
   server.registerResource(
     "Fannie Mae catalog widget",
     widgetUri("catalog"),
@@ -164,5 +197,12 @@ export function registerWidgets(server: any) {
     widgetUri("catalog-explorer"),
     { title: "Fannie Mae API Explorer", mimeType: APP_MIME },
     async () => ({ contents: [{ uri: widgetUri("catalog-explorer"), mimeType: APP_MIME, text: widgetHtml("catalog-explorer"), _meta: APP_UI_META }] })
+  );
+
+  server.registerResource(
+    "Fannie Mae Business Dashboard widget",
+    widgetUri("dashboard"),
+    { title: "Fannie Mae Business Dashboard", mimeType: APP_MIME },
+    async () => ({ contents: [{ uri: widgetUri("dashboard"), mimeType: APP_MIME, text: widgetHtml("dashboard"), _meta: APP_UI_META }] })
   );
 }
