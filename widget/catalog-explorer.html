@@ -20,9 +20,12 @@
     - The composer stays visible; the shell is sized to the host viewport and the
       panes scroll internally, so the conversation composer is never obscured.
 
-  v0.2: inline default is a compact "cockpit" panel; the full docked workspace and
-  fullscreen both live IN THE WIDGET (Open Explorer / Full screen), with a
-  separate "Open in browser" escape hatch to the standalone /explorer.
+  v0.4: absorbs the standalone Catalog. Default view is the catalog GALLERY
+  (grouped cards of every API, with search / grouping / status badges / "why
+  unreachable" notes / stats). Clicking a live/down card drills into the docked
+  3-pane workspace for that API; a "‹ Catalog" control returns to the gallery.
+  Both views fill the host in fullscreen and cap+scroll inline. "Open in browser"
+  remains an escape hatch to the standalone /explorer app.
 
   Reuse: the entire v1.6 result renderer (status / detail / table+chart / filters /
   sort / CSV), param controls, and the callServerTool run path are ported verbatim
@@ -156,33 +159,32 @@
   .tabpanel{padding:10px 14px 18px}
   .tabpanel-empty{padding:26px 16px;color:var(--muted);font-size:12px;text-align:center}
 
-  /* ---- compact inline "cockpit" panel (default inline state) ---- */
-  .panel-card{max-width:520px;margin:0 auto;padding:20px 22px 18px}
-  .pk-title{font-size:15px;font-weight:800;color:var(--accent);text-transform:uppercase;letter-spacing:.05em;line-height:1.2}
-  /* status summary: colored dots make live/down/catalog-only scannable at a glance */
-  .pk-stats{display:flex;align-items:center;flex-wrap:wrap;gap:7px 14px;margin-top:11px}
-  .pk-stat{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;color:var(--muted);white-space:nowrap;line-height:1}
-  .pk-stat b{color:var(--body);font-weight:700}
-  .pk-dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto;box-shadow:0 0 0 3px var(--off)}
-  .pk-dot.ok{background:var(--pass)}
-  .pk-dot.down{background:var(--watch)}
-  .pk-dot.static{background:var(--slate)}
-  .pk-total{font-size:11.5px;color:var(--muted);font-weight:600}
-  .pk-chips{display:flex;flex-wrap:wrap;gap:6px;margin:15px 0 2px}
-  .pk-chip{font-size:10.5px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:4px 11px;background:var(--off)}
-  .pk-chip b{color:var(--body);font-weight:700}
-  .pk-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:20px}
-  /* consistent button geometry across the primary + both secondaries */
-  .pk-primary,.panel-card .pk-actions .disp-btn,.panel-card .pk-actions .app-link{height:34px;border-radius:8px;box-sizing:border-box;display:inline-flex;align-items:center;line-height:1}
-  .pk-primary{border:none;padding:0 16px;font-size:12px;font-weight:700;background:var(--accent);color:var(--paper);cursor:pointer;font-family:inherit;box-shadow:0 1px 2px rgba(5,49,77,.18)}
-  .pk-primary:hover{opacity:.92}
-  .pk-primary:active{transform:scale(.98)}
-  /* scoped secondaries: identical outline treatment, subordinate to the navy primary */
-  .panel-card .pk-actions .disp-btn,.panel-card .pk-actions .app-link{padding:0 13px;font-size:11px;font-weight:700;color:var(--muted);background:var(--paper);border:1px solid var(--slate);gap:6px}
-  .panel-card .pk-actions .disp-btn:hover,.panel-card .pk-actions .app-link:hover{color:var(--body);border-color:var(--muted);opacity:1}
-  .panel-card .pk-actions .disp-btn>span[aria-hidden],.panel-card .pk-actions .app-link>span[aria-hidden]{font-size:12px}
-  .pk-note{font-size:10px;color:var(--muted);line-height:1.55;margin-top:14px}
-  .pk-note b{color:var(--body);font-weight:700}
+  /* ---- gallery (catalog overview -- the Explorer's default front door) ---- */
+  .gv-scroll{overflow:auto;min-height:0;flex:1 1 auto;padding:2px 0 16px}
+  .gv-group{padding:4px 16px}
+  .gv-group-hd{display:flex;align-items:center;gap:6px;margin:12px 0 6px}
+  .gv-group-hd svg{width:13px;height:13px;color:var(--muted);flex:0 0 auto}
+  .gv-group-lab{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+  .gv-group-count{font-size:10px;color:var(--muted)}
+  .gv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px}
+  .gv-card{border:1px solid var(--line);border-radius:7px;padding:11px 13px;background:var(--off);transition:box-shadow .12s,transform .12s}
+  .gv-card.live{border-left:3px solid var(--pass);cursor:pointer;background:var(--pass-bg);box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  .gv-card.live:hover{box-shadow:0 3px 10px rgba(0,0,0,.10);transform:translateY(-1px)}
+  .gv-card.down{border-left:3px solid var(--watch);cursor:pointer;background:var(--watch-bg);box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  .gv-card.down:hover{box-shadow:0 3px 10px rgba(0,0,0,.10);transform:translateY(-1px)}
+  .gv-card.static{border-left:3px solid var(--slate);background:var(--off)}
+  .gv-card.live:active,.gv-card.down:active{transform:scale(.985)}
+  .gv-card:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+  .gv-name{font-weight:700;font-size:12px;margin-bottom:3px;color:var(--body)}
+  .gv-desc{font-size:11px;color:var(--muted);line-height:1.4}
+  .gv-meta{font-size:9px;color:var(--muted);margin-top:6px;text-transform:uppercase;letter-spacing:.03em}
+  .gv-badges{display:flex;gap:5px;flex-wrap:wrap;align-items:center;margin-top:7px}
+  .gv-badge{display:inline-flex;align-items:center;gap:3px;font-size:9px;font-weight:700;padding:2px 7px;border-radius:999px;background:var(--pass);color:var(--paper)}
+  .gv-badge.down{background:var(--watch);color:var(--paper)}
+  .gv-badge.static{background:transparent;color:var(--muted);border:1px solid var(--slate)}
+  .gv-why{font-size:9.5px;color:var(--watch);line-height:1.4;margin-top:6px}
+  .gv-empty{border:1px dashed var(--slate);border-radius:7px;padding:11px 13px;font-size:11px;color:var(--muted);line-height:1.45;grid-column:1/-1}
+  .gv-none{padding:20px 16px;color:var(--muted);text-align:center;font-size:12px}
 
   /* ================= ported v1.6 result renderer (verbatim from catalog.html) ================= */
   .rr-result{margin-top:2px}
@@ -311,8 +313,8 @@ const RESULTS={};                 // `${apiName}::${opId}` -> data
 let tabs=[];                      // ordered list of result keys
 let activeTab=null;
 const collapse={apis:false, eps:false};
-let view="panel";     // "panel" (compact inline card) | "workspace" (docked 3-pane)
-let prevFs=false;     // track fullscreen transitions so exiting fullscreen returns to the panel
+let view="gallery";  // "gallery" (catalog overview -- the front door) | "workspace" (docked 3-pane for one API)
+let prevFs=false;    // tracks fullscreen transitions
 const ctx=()=>app?.getHostContext?.()||{};
 const isFs=()=> (ctx().displayMode||"inline")==="fullscreen";
 
@@ -663,22 +665,24 @@ const selectedOp=()=>{ const a=selectedApi(); return a&&(a.operations||[]).find(
 function render(){
   const body=document.body;
   const fs=isFs();
-  const showWorkspace = fs || view==="workspace";   // fullscreen always shows the workspace
+  const showWorkspace = view==="workspace";   // gallery is the default; drill into an API for the workspace
   body.classList.toggle("fs", fs);
   body.classList.toggle("inline", !fs);
-  body.classList.toggle("panel", !showWorkspace);
   try{ document.documentElement.classList.toggle("dark", ctx().theme==="dark"); }catch{}
 
   const apis = DATA?.apis||[];
   const root=document.getElementById("root");
   if(apis.length===0){ root.innerHTML='<div style="padding:26px 16px;color:var(--muted);text-align:center">No APIs found.</div>'; return; }
 
-  // Compact inline "cockpit" panel by default. The full docked workspace opens
-  // IN THE WIDGET -- inline-expanded, or fullscreen when the host grants it --
-  // never by navigating to the browser app.
+  // Default front door: the catalog GALLERY (grouped cards of every API). Clicking
+  // a live/down card drills into the docked workspace for that API. Both views
+  // fill the host in fullscreen and cap+scroll inline -- never a browser hop.
   if(!showWorkspace){
-    root.innerHTML = panelHtml(apis);
-    wirePanel(root);
+    root.innerHTML = `<div class="wrap">
+      ${galleryHeaderHtml(apis)}
+      <div class="gv-scroll">${galleryBodyHtml(apis)}</div>
+    </div>`;
+    wireGallery(root);
     return;
   }
 
@@ -702,11 +706,10 @@ function render(){
 function topbarHtml(apis){
   const liveCount = apis.filter(a=>a.implemented && !isDown(a)).length;
   const downCount = apis.filter(isDown).length;
-  // Inline workspace gets a "back to overview" control; in fullscreen the host
-  // provides its own close button in the native header, so we omit ours.
-  const back = !isFs() ? `<button type="button" class="pane-toggle" data-overview title="Back to overview">‹ Overview</button>` : "";
+  // Always offer a way back to the catalog gallery (works inline and in fullscreen).
+  const back = `<button type="button" class="pane-toggle" data-catalog title="Back to catalog">‹ Catalog</button>`;
   return `<header class="topbar">
-    <div class="tb-title">${back}<h1>Fannie Mae API Explorer</h1><span class="tb-ver">v0.2 · ${liveCount} live${downCount?` · ${downCount} down`:""}</span></div>
+    <div class="tb-title">${back}<h1>Fannie Mae API Explorer</h1><span class="tb-ver">${liveCount} live${downCount?` · ${downCount} down`:""}</span></div>
     <input class="tb-search" id="q" type="text" placeholder="Search APIs…" value="${esc(query)}" />
     <div class="seg">
       <button type="button" data-group="businessLine" class="${groupBy==="businessLine"?"on":""}">Business line</button>
@@ -716,35 +719,93 @@ function topbarHtml(apis){
   </header>`;
 }
 
-// Compact inline card (the "cockpit" panel). Sits small in the conversation
-// with: a primary "Open Explorer" (opens the docked workspace in the widget),
-// the host-gated Full screen control (widget display mode -- NOT the browser),
-// and "Open in browser" (the standalone hosted /explorer escape hatch).
-function panelHtml(apis){
-  const live = apis.filter(a=>a.implemented && !isDown(a));
-  const down = apis.filter(isDown);
-  const staticN = apis.length - live.length - down.length;
-  const chips = groupOrder(apis).map(g=>{
-    const n = apis.filter(a=>keyOf(a)===g).length;
-    return n?`<span class="pk-chip">${esc(g)} <b>${n}</b></span>`:"";
-  }).join("");
-  const stats = [
-    `<span class="pk-total">${apis.length} APIs</span>`,
-    `<span class="pk-stat"><span class="pk-dot ok"></span><b>${live.length}</b> live</span>`,
-    down.length?`<span class="pk-stat"><span class="pk-dot down"></span><b>${down.length}</b> down</span>`:"",
-    staticN?`<span class="pk-stat"><span class="pk-dot static"></span><b>${staticN}</b> catalog-only</span>`:""
-  ].filter(Boolean).join("");
-  return `<div class="panel-card">
-    <div class="pk-title">Fannie Mae API Explorer</div>
-    <div class="pk-stats">${stats}</div>
-    <div class="pk-chips">${chips}</div>
-    <div class="pk-actions">
-      <button type="button" class="pk-primary" data-open-workspace>Open Explorer</button>
-      ${displayControlsHtml()}
-      ${appLinkHtml()}
+// ===========================================================================
+// gallery (catalog overview) -- the Explorer's default front door.
+// Absorbs the former standalone Catalog: grouped cards of every API with full
+// descriptions, status badges, "why unreachable" notes, group icons, stats, and
+// empty-group notes. Clicking a live/down card opens that API in the workspace.
+// ===========================================================================
+const GV_TAG_ICONS = {
+  "Originating & Underwriting": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1m4 0h1m-6 4h1m4 0h1m-6 4h1m4 0h1"/></svg>',
+  "Pricing & Execution": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
+  "Servicing": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.9 4.9l2.9 2.9M16.2 16.2l2.9 2.9M2 12h4M18 12h4M4.9 19.1l2.9-2.9M16.2 7.8l2.9-2.9"/><circle cx="12" cy="12" r="3"/></svg>',
+  "Single Family": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8M5 10v10h14V10"/></svg>',
+};
+const GV_BL_ICONS = {
+  "Single Family": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8M5 10v10h14V10"/></svg>',
+  "Multifamily": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M6 21V4h6v17M12 21V9h6v12M8 8h2m-2 4h2m-2 4h2m4-4h2m-2 4h2"/></svg>',
+  "Both": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 21h20M4 21V11l5-4 5 4v10M14 21V8l5-3v16M6.5 13h1m-1 3h1m10-6h.01m-.01 3h.01"/></svg>',
+  "Market & Reference": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18M7 15l4-5 3 3 5-7"/></svg>',
+};
+const GV_DEFAULT_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg>';
+const GV_EMPTY_GROUP_NOTE = {
+  "Multifamily": "No API in this catalog is multifamily-only. Pool Prefix is the only one that covers multifamily at all, and it covers both business lines — you will find it under Both.",
+};
+
+function galleryHeaderHtml(apis){
+  const live = apis.filter(a=>a.implemented && !isDown(a)).length;
+  const down = apis.filter(isDown).length;
+  const staticN = apis.length - live - down;
+  const ver = `${apis.length} APIs · ${live} live${down?` · ${down} down`:""}${staticN?` · ${staticN} catalog-only`:""}`;
+  return `<header class="topbar">
+    <div class="tb-title"><h1>Fannie Mae API Explorer</h1><span class="tb-ver">${ver}</span></div>
+    <input class="tb-search" id="q" type="text" placeholder="Search APIs by name, category, or description…" value="${esc(query)}" />
+    <div class="seg">
+      <button type="button" data-group="businessLine" class="${groupBy==="businessLine"?"on":""}">Business line</button>
+      <button type="button" data-group="tag" class="${groupBy==="tag"?"on":""}">Function</button>
     </div>
-    <div class="pk-note">Opens a docked workspace <b>in this conversation</b>. <b>Full screen</b> expands it to fill Claude when your client supports it; <b>Open in browser</b> launches the standalone app in a tab.</div>
-  </div>`;
+    <div class="tb-right">${appLinkHtml()}${displayControlsHtml()}</div>
+  </header>`;
+}
+
+function galleryBodyHtml(apis){
+  const visible = apis.filter(matches);
+  const icons = groupBy==="businessLine" ? GV_BL_ICONS : GV_TAG_ICONS;
+  const sections = groupOrder(apis).map(g=>{
+    const groupApis = visible.filter(a=>keyOf(a)===g);
+    const showEmpty = groupApis.length===0 && !query && groupBy==="businessLine" && GV_EMPTY_GROUP_NOTE[g];
+    if(groupApis.length===0 && !showEmpty) return "";
+    const body = showEmpty
+      ? `<div class="gv-empty">${esc(GV_EMPTY_GROUP_NOTE[g])}</div>`
+      : groupApis.map(a=>{
+          const down = isDown(a);
+          const cls = down ? "down" : a.implemented ? "live" : "static";
+          const badge = down
+            ? '<span class="gv-badge down">● UNREACHABLE</span>'
+            : a.implemented
+              ? '<span class="gv-badge">● LIVE</span>'
+              : '<span class="gv-badge static">● Catalog only</span>';
+          const why = down && a.statusNote ? `<div class="gv-why">${esc(a.statusNote)}</div>` : "";
+          const clickable = down || a.implemented;
+          return `<div class="gv-card ${cls}"${clickable?` data-name="${esc(a.name)}" role="button" tabindex="0"`:""}>
+            <div class="gv-name">${esc(a.name)}</div>
+            <div class="gv-desc">${esc(a.description)}</div>
+            <div class="gv-badges">${badge}</div>
+            <div class="gv-meta">${esc(otherOf(a))}</div>
+            ${why}
+          </div>`;
+        }).join("");
+    return `<div class="gv-group"><div class="gv-group-hd">${icons[g]||GV_DEFAULT_ICON}<span class="gv-group-lab">${esc(g)}</span><span class="gv-group-count">(${groupApis.length})</span></div><div class="gv-grid">${body}</div></div>`;
+  }).join("");
+  return visible.length===0 ? '<div class="gv-none">No APIs match your search.</div>' : sections;
+}
+
+function wireGallery(root){
+  const s=root.querySelector("#q");
+  if(s){ s.addEventListener("input",(e)=>{ query=e.target.value; render(); const f=document.getElementById("q"); if(f){ f.focus(); f.setSelectionRange(query.length,query.length); } }); }
+  root.querySelectorAll(".seg button").forEach(b=> b.addEventListener("click",()=>{ groupBy=b.dataset.group; render(); }));
+  root.querySelectorAll(".gv-card[data-name]").forEach(card=>{
+    const open=()=>{
+      selectedApiName=card.dataset.name;
+      const a=selectedApi();
+      selectedOpId = a && a.implemented && (a.operations||[])[0] ? a.operations[0].id : null;
+      view="workspace"; render();
+    };
+    card.addEventListener("click", open);
+    card.addEventListener("keydown",(e)=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); open(); } });
+  });
+  wireDisplay(root);   // Full screen / Collapse (widget display mode)
+  wireAppLink(root);   // Open in browser (hosted /explorer)
 }
 
 function apisPaneHtml(apis){
@@ -843,15 +904,8 @@ function wireTopbar(root){
   const s=root.querySelector("#q");
   if(s){ s.addEventListener("input",(e)=>{ query=e.target.value; render(); const f=document.getElementById("q"); if(f){ f.focus(); f.setSelectionRange(query.length,query.length); } }); }
   root.querySelectorAll(".seg button").forEach(b=> b.addEventListener("click",()=>{ groupBy=b.dataset.group; render(); }));
-  const ov=root.querySelector("[data-overview]");
-  if(ov) ov.addEventListener("click",()=>{ view="panel"; render(); });
-}
-
-function wirePanel(root){
-  const ob=root.querySelector("[data-open-workspace]");
-  if(ob) ob.addEventListener("click",()=>{ view="workspace"; render(); });
-  wireDisplay(root);   // Full screen / Collapse (widget display mode)
-  wireAppLink(root);   // Open in browser (hosted /explorer)
+  const ov=root.querySelector("[data-catalog]");
+  if(ov) ov.addEventListener("click",()=>{ view="gallery"; render(); });
 }
 function wireApisPane(root){
   root.querySelectorAll(".api-row").forEach(r=> r.addEventListener("click",()=>{
@@ -931,11 +985,12 @@ function wireMainPane(root){
 (async()=>{
   app=new App({name:"FnmaExplorer",version:"0.2.0"},{availableDisplayModes:["inline","fullscreen"]},{autoResize:true});
   app.ontoolresult=(result)=>{ try{ DATA=result?.structuredContent ?? JSON.parse(result.content[0].text); }catch{ DATA=null; } render(); };
-  // Reset to the compact panel when the user exits fullscreen (host close button).
-  app.onhostcontextchanged=()=>{ const fs=isFs(); if(prevFs && !fs) view="panel"; prevFs=fs; render(); };
+  // Re-render on host context changes (theme / display mode); the current view
+  // (gallery or workspace) is preserved across inline<->fullscreen transitions.
+  app.onhostcontextchanged=()=>{ prevFs=isFs(); render(); };
   await app.connect();
   prevFs=isFs();
-  console.log("[fnma explorer] draft v0.2 (panel + docked workspace) — DEV:", DEV, "| host availableDisplayModes:", ctx().availableDisplayModes, "| current:", ctx().displayMode);
+  console.log("[fnma explorer] v0.4 (catalog gallery + docked workspace) — DEV:", DEV, "| host availableDisplayModes:", ctx().availableDisplayModes, "| current:", ctx().displayMode);
   render();
 })();
 </script>
