@@ -42,6 +42,8 @@
   .app-link:hover{opacity:.9}
   .app-link:active{opacity:.7}
   .app-link > span[aria-hidden]{font-size:12px}
+  .app-link.ghost{background:var(--paper);color:var(--muted);border-color:var(--slate)}
+  .app-link.ghost:hover{color:var(--body);border-color:var(--muted);opacity:1}
   .controls{display:flex;gap:8px;align-items:center;margin:8px 16px 4px;flex-wrap:wrap}
   .controls input{flex:1 1 220px;min-width:0;border:1px solid var(--slate);border-radius:6px;padding:7px 10px;font-size:12px;background:var(--paper);color:var(--body)}
   .controls input:focus{outline:2px solid var(--pass);outline-offset:-1px}
@@ -215,15 +217,26 @@ function wireDisplay(scope){
     b.addEventListener("click",()=>{ try{ app.requestDisplayMode&&app.requestDisplayMode({ mode: b.dataset.mode }); }catch(e){ console.warn("[fnma] requestDisplayMode failed:",e); } });
   });
 }
-// "Open full app" -> launches the standalone Explorer (server-injected absolute
-// URL). Reuses openLink (host app.openLink with copy fallback). Omitted when the
-// server didn't supply a URL (e.g. local dev without VERCEL_URL/EXPLORER_BASE_URL).
+// Two ways to open the richer Explorer:
+//   1) "Explorer" (primary) -> opens it INLINE in this conversation. A widget
+//      can't mount another tool's widget directly, so we ask the host (via
+//      app.sendMessage) to run fnma_show_explorer, which renders the Explorer as
+//      a new in-conversation widget -- not a browser tab.
+//   2) "Open in browser" (ghost) -> the standalone hosted /explorer via openLink
+//      (server-injected absolute URL; omitted when the server supplied none).
 function appLinkHtml(){
   const u=DATA&&DATA.explorerUrl;
-  return u?`<button type="button" class="app-link" data-url="${esc(u)}" title="Open the full Fannie Mae API Explorer"><span aria-hidden="true">⧉</span><span class="disp-lab">Open full app</span></button>`:"";
+  const explorerBtn=`<button type="button" class="app-link" data-open-explorer title="Open the interactive Explorer in this conversation"><span aria-hidden="true">⧉</span><span class="disp-lab">Explorer</span></button>`;
+  const browserBtn=u?`<button type="button" class="app-link ghost" data-url="${esc(u)}" title="Open the Explorer in a browser tab"><span aria-hidden="true">↗</span><span class="disp-lab">Open in browser</span></button>`:"";
+  return explorerBtn+browserBtn;
 }
 function wireAppLink(scope){
-  (scope||document).querySelectorAll(".app-link").forEach(b=>{
+  // Primary: ask the host to open the inline Explorer (fnma_show_explorer).
+  (scope||document).querySelectorAll("[data-open-explorer]").forEach(b=>{
+    b.addEventListener("click",()=>{ try{ app.sendMessage&&app.sendMessage({ role:"user", content:[{ type:"text", text:"Open the Fannie Mae API Explorer (fnma_show_explorer)." }] }); }catch(e){ console.warn("[fnma] sendMessage failed:",e); } });
+  });
+  // Secondary: open the standalone hosted app in a browser tab.
+  (scope||document).querySelectorAll(".app-link[data-url]").forEach(b=>{
     b.addEventListener("click",()=>{ openLink(b.dataset.url||"", b); });
   });
 }
