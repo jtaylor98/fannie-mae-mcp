@@ -1,0 +1,452 @@
+<!doctype html>
+<meta charset="utf-8" />
+<!--
+  Fannie Mae Business Dashboard -- WORKFLOW-oriented business-user surface (PoC, additive).
+
+  Product model (see claude/fnma-business-dashboard-concept.md):
+    Business Dashboard = business TASKS / workflows  ("What would you like to do?")
+    API Explorer       = APIs / endpoints            (the existing power-user surface)
+
+  Additive presentation/orchestration LAYER over the same engine (app.callServerTool
+  -> call_fnma_api -> runOperation, lib/fanniemae.ts). No new FNMA logic / secrets.
+
+  v0.3 -- visual/UX refinement pass (IA unchanged):
+    - Property & Loan Snapshot styled as an enterprise report, not a web form.
+    - Results hierarchy: property identity -> snapshot heading -> result cards ->
+      supporting details (disclaimer + sources).
+    - Cards: primary answer scannable, reference info visually subordinate.
+    - Opportunity Zone simplified (no nested-card box).
+    - "What does this mean?" affordances on each card (native <details>).
+    - OPTIONAL deal inputs (qualifying income, loan amount, units) -> data-supported
+      comparisons only (loan vs conforming limit; income vs HomeReady limit; units
+      selects the applicable limit). No eligibility/approval implied.
+
+  Dev preview: opened raw, a guarded mock host + verified sample payloads render so
+  the workflow is clickable in a browser. Never runs in a built widget.
+-->
+<style>
+  /*__BRAND__*/
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:var(--font);color:var(--body);background:var(--off);font-size:13px;color-scheme:light dark}
+
+  .wrap{max-width:820px;margin:0 auto;padding:22px 22px 26px}
+
+  .kicker{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}
+  .back{display:inline-flex;align-items:center;gap:5px;background:none;border:none;color:var(--muted);font-weight:700;font-size:11px;font-family:inherit;cursor:pointer;padding:0;margin-bottom:14px}
+  .back:hover{color:var(--body)}
+
+  /* ---- home: workflow launcher ---- */
+  .home-hd{margin-bottom:18px}
+  .home-hd h1{font-size:17px;font-weight:800;color:var(--accent);margin:6px 0 0;line-height:1.2}
+  .home-hd p{font-size:12px;color:var(--muted);margin:6px 0 0;line-height:1.45}
+  .tasks{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media (max-width:560px){ .tasks{grid-template-columns:1fr} }
+  .task{display:flex;gap:12px;align-items:flex-start;text-align:left;border:1px solid var(--line);border-radius:12px;background:var(--paper);padding:16px;font-family:inherit;cursor:pointer;box-shadow:0 1px 2px rgba(16,24,40,.04);transition:border-color .12s,box-shadow .12s}
+  .task:hover{border-color:var(--accent);box-shadow:0 3px 10px rgba(5,49,77,.09)}
+  .task.soon{cursor:default;opacity:.7;background:var(--off)}
+  .task.soon:hover{border-color:var(--line);box-shadow:0 1px 2px rgba(16,24,40,.04)}
+  .t-ic{flex:0 0 auto;width:36px;height:36px;border-radius:9px;background:var(--pass-bg);display:flex;align-items:center;justify-content:center}
+  .task.soon .t-ic{background:var(--paper);border:1px solid var(--line)}
+  .t-ic svg{width:19px;height:19px;stroke:var(--accent);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .task.soon .t-ic svg{stroke:var(--muted)}
+  .t-body{min-width:0;flex:1 1 auto}
+  .t-title{display:block;font-size:13px;font-weight:800;color:var(--body)}
+  .t-blurb{display:block;font-size:11px;color:var(--muted);line-height:1.45;margin-top:4px}
+  .t-cta{font-size:11px;font-weight:700;color:var(--accent);margin-top:10px}
+  .t-soon{display:inline-block;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);background:var(--paper);border:1px solid var(--slate);border-radius:999px;padding:2px 8px;margin-top:10px}
+  .exp-link{margin-top:18px;font-size:11px;color:var(--muted);line-height:1.5;border-top:1px solid var(--line);padding-top:14px}
+  .exp-link button{background:none;border:none;color:var(--accent);font-weight:700;cursor:pointer;font-family:inherit;font-size:11px;padding:0;text-decoration:underline}
+
+  /* ---- snapshot: workflow header ---- */
+  .wf-hd{margin-bottom:14px}
+  .wf-hd h1{font-size:17px;font-weight:800;color:var(--accent);margin:6px 0 0;line-height:1.2}
+  .wf-hd p{font-size:12px;color:var(--muted);margin:6px 0 0;line-height:1.45;max-width:60ch}
+
+  /* ---- lookup command bar (panel, not a bare form) ---- */
+  .lookup{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:14px;box-shadow:0 1px 2px rgba(16,24,40,.04)}
+  .lu-row{display:flex;gap:8px;align-items:stretch;flex-wrap:wrap}
+  .lu-row input{flex:1 1 320px;min-width:0;border:1px solid var(--slate);border-radius:8px;padding:0 13px;height:42px;font-size:13px;font-family:inherit;background:var(--paper);color:var(--body)}
+  .lu-row input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--pass-bg)}
+  .lu-row button.go{height:42px;border:none;border-radius:8px;padding:0 22px;font-size:13px;font-weight:700;font-family:inherit;background:var(--accent);color:var(--paper);cursor:pointer;box-shadow:0 1px 2px rgba(5,49,77,.18);flex:0 0 auto}
+  .lu-row button.go:hover{opacity:.92}
+  .lu-row button.go:disabled{opacity:.6;cursor:default}
+  .lu-foot{display:flex;align-items:center;gap:14px;margin-top:10px;flex-wrap:wrap}
+  .linklike{background:none;border:none;color:var(--accent);font-weight:700;cursor:pointer;font-family:inherit;font-size:11px;padding:0}
+  .linklike:hover{text-decoration:underline}
+  .lu-hint{font-size:11px;color:var(--muted)}
+
+  /* optional deal inputs */
+  .deal{margin-top:12px;padding-top:12px;border-top:1px dashed var(--slate);display:grid;grid-template-columns:1fr 1fr auto;gap:10px}
+  @media (max-width:560px){ .deal{grid-template-columns:1fr} }
+  .deal-f label{display:block;font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:4px}
+  .deal-f input,.deal-f select{width:100%;border:1px solid var(--slate);border-radius:7px;height:36px;padding:0 10px;font-size:12.5px;font-family:inherit;background:var(--paper);color:var(--body)}
+  .deal-f.units{min-width:96px}
+  .deal-note{grid-column:1/-1;font-size:10px;color:var(--muted);line-height:1.45}
+
+  /* ---- results: property identity band ---- */
+  .prop-id{display:flex;align-items:center;gap:13px;background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:15px 16px;margin-top:18px;box-shadow:0 1px 2px rgba(16,24,40,.04)}
+  .prop-id .pid-ic{flex:0 0 auto;width:40px;height:40px;border-radius:10px;background:var(--accent);display:flex;align-items:center;justify-content:center}
+  .prop-id .pid-ic svg{width:21px;height:21px;stroke:var(--paper);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+  .pid-body{min-width:0;flex:1 1 auto}
+  .pid-addr{font-size:15px;font-weight:800;color:var(--body);line-height:1.25}
+  .pid-meta{font-size:11.5px;color:var(--muted);margin-top:3px}
+  .pid-meta b{color:var(--body);font-weight:700}
+  .pid-new{flex:0 0 auto;align-self:flex-start}
+
+  /* ---- snapshot heading ---- */
+  .snap-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin:20px 2px 10px;flex-wrap:wrap}
+  .snap-head h2{font-size:13px;font-weight:800;color:var(--body);margin:0;text-transform:uppercase;letter-spacing:.04em}
+  .snap-head .sh-note{font-size:11px;color:var(--muted)}
+
+  /* ---- result cards ---- */
+  .cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;align-items:start}
+  @media (max-width:680px){ .cards{grid-template-columns:1fr} }
+  .card{border:1px solid var(--line);border-radius:12px;background:var(--paper);padding:16px;display:flex;flex-direction:column;box-shadow:0 1px 2px rgba(16,24,40,.04)}
+  .c-hd{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+  .c-hd svg{width:15px;height:15px;stroke:var(--muted);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+  .c-lab{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+  .c-primary{font-size:25px;font-weight:800;color:var(--body);line-height:1.05;letter-spacing:-.015em}
+  .c-desc{font-size:11.5px;color:var(--muted);margin-top:5px;line-height:1.4}
+  /* subordinate reference block */
+  .c-ref{margin-top:12px;padding-top:11px;border-top:1px solid var(--line)}
+  .c-ref-row{display:flex;justify-content:space-between;gap:10px;font-size:11px;line-height:1.7}
+  .c-ref-row .rk{color:var(--muted)}
+  .c-ref-row .rv{color:var(--body);font-weight:700;font-variant-numeric:tabular-nums}
+  .c-ref-row.on .rk,.c-ref-row.on .rv{color:var(--accent)}
+  .c-src{margin-top:12px;font-size:9.5px;color:var(--muted)}
+  .means{margin-top:10px;border-top:1px solid var(--line);padding-top:9px}
+  .means>summary{font-size:10px;font-weight:700;color:var(--muted);cursor:pointer;list-style:none;display:inline-flex;align-items:center;gap:5px}
+  .means>summary::-webkit-details-marker{display:none}
+  .means>summary::before{content:"?";display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;border:1px solid var(--slate);font-size:9px;color:var(--muted)}
+  .means>summary:hover{color:var(--body)}
+  .means p{font-size:10.5px;color:var(--muted);line-height:1.5;margin:8px 0 2px}
+
+  /* Opportunity Zone -- simplified, no nested box */
+  .oz-primary{display:flex;align-items:center;gap:9px;font-size:17px;font-weight:800;line-height:1.2}
+  .oz-primary .oz-mark{flex:0 0 auto;width:11px;height:11px;border-radius:50%}
+  .oz-primary.no{color:var(--muted)} .oz-primary.no .oz-mark{background:var(--slate)}
+  .oz-primary.yes{color:var(--pass)} .oz-primary.yes .oz-mark{background:var(--pass)}
+
+  /* deal comparison badges */
+  .cmp{display:block;margin-top:11px;font-size:11px;padding:9px 11px;border-radius:8px;border:1px solid}
+  .cmp-main{display:flex;align-items:flex-start;gap:6px;font-weight:700;line-height:1.3}
+  .cmp-ic{flex:0 0 auto;font-weight:800}
+  .cmp-sub{font-weight:400;margin-top:5px;line-height:1.45;font-variant-numeric:tabular-nums}
+  .cmp-cav{display:block;margin-top:6px;font-weight:400;font-size:10px;opacity:.85;line-height:1.4}
+  .cmp.ok{background:var(--pass-bg);color:var(--pass);border-color:var(--pass)}
+  .cmp.over{background:var(--watch-bg);color:var(--watch);border-color:var(--watch)}
+
+  /* ---- supporting details ---- */
+  .support{margin-top:16px}
+  .disclaimer{font-size:10.5px;color:var(--muted);line-height:1.5;background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:11px 13px}
+  .disclaimer b{color:var(--body)}
+  .sources{font-size:10px;color:var(--muted);margin-top:8px;padding-left:2px}
+
+  .err{border:1px solid var(--watch);background:var(--watch-bg);border-radius:10px;padding:12px 14px;font-size:12px;color:var(--watch);line-height:1.5;margin-top:16px}
+  .err b{display:block;margin-bottom:3px}
+  .sk{height:25px;width:66%;background:var(--off);border-radius:5px}
+  .sk.sm{height:11px;width:46%;margin-top:9px}
+</style>
+
+<div id="root"><div style="padding:26px 16px;color:var(--muted);text-align:center">Loading…</div></div>
+
+<script type="module">
+/*__EXT_APPS_BUNDLE__*/
+
+const DEV = !globalThis.ExtApps;
+const esc=(s)=>String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+
+let App;
+if(!DEV){
+  App = globalThis.ExtApps.App;
+} else {
+  const MOCK = {
+    getIncomeLimitsByAddress: { incomeLimitsList:[{ dts_income_limit:164100, hr_income_limit:131280, vli_income_limit:82050, rural_indicator:false, high_needs_rural_indicator:false, fips_code:"51059480903" }] },
+    validateOpportunityZoneByAddress: { result:{ belongsToOpportunityZones:"No", censusTractNumber:"51059480903" }, streetAddress:"13150 WORLDGATE DR", city:"HERNDON", state:"VA", zip:"201704376" },
+    getAllLoanLimits: { loanLimit:[
+      { stateCode:"VA", countyName:"Fairfax County", reportingYear:20260101, fipsCode:"51059", issuers:[{ issuerType:"FHFA", oneUnitLimit:1249125, twoUnitLimit:1599375, threeUnitLimit:1933200, fourUnitLimit:2402625 }] },
+      { stateCode:"VA", countyName:"Fairfax City of", reportingYear:20260101, fipsCode:"51600", issuers:[{ issuerType:"FHFA", oneUnitLimit:1249125, twoUnitLimit:1599375, threeUnitLimit:1933200, fourUnitLimit:2402625 }] },
+      { stateCode:"CA", countyName:"Los Angeles County", reportingYear:20260101, fipsCode:"06037", issuers:[{ issuerType:"FHFA", oneUnitLimit:1249125, twoUnitLimit:1599375, threeUnitLimit:1933200, fourUnitLimit:2402625 }] }
+    ] }
+  };
+  App = class {
+    constructor(){ this._mode="inline"; this._modes=["inline","fullscreen"]; this.ontoolresult=null; this.onhostcontextchanged=null; }
+    getHostContext(){ return { displayMode:this._mode, availableDisplayModes:this._modes, theme:(matchMedia&&matchMedia("(prefers-color-scheme: dark)").matches)?"dark":"light" }; }
+    async connect(){ setTimeout(()=>{ this.ontoolresult && this.ontoolresult({ structuredContent:{ explorerUrl:"https://fannie-mae-mcp-three.vercel.app/explorer" } }); }, 0); }
+    requestDisplayMode(arg){ this._mode=(arg&&arg.mode)||arg; this.onhostcontextchanged&&this.onhostcontextchanged(); return {}; }
+    async callServerTool({name,arguments:args}){ await new Promise(r=>setTimeout(r,340)); const d=MOCK[args&&args.operation_id]||{message:"no mock"}; return { content:[{ type:"text", text:JSON.stringify(d) }] }; }
+    async openLink({url}){ try{ window.open(url,"_blank"); }catch(e){} return {}; }
+  };
+}
+
+// ===========================================================================
+const IC_HOME='<svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.7V21h14V9.7"/></svg>';
+const IC_CASH='<svg viewBox="0 0 24 24"><path d="M12 2.5v19"/><path d="M16.5 6.5c0-1.7-2-2.7-4.5-2.7s-4.5 1-4.5 3S9.7 9.4 12 9.9s4.5 1.1 4.5 3.1-2 3-4.5 3-4.5-1-4.5-2.8"/></svg>';
+const IC_PIN='<svg viewBox="0 0 24 24"><path d="M12 21s-6.4-5.4-6.4-10.8A6.4 6.4 0 0 1 18.4 10C18.4 15.6 12 21 12 21z"/><circle cx="12" cy="9.8" r="2.3"/></svg>';
+const IC_CHART='<svg viewBox="0 0 24 24"><path d="M4 4v16h16"/><path d="M8 15l3-4 3 2 4-6"/></svg>';
+const IC_PULSE='<svg viewBox="0 0 24 24"><path d="M3 12h4l2-6 4 12 2-6h6"/></svg>';
+
+const WORKFLOWS = [
+  { id:"snapshot", title:"Property & Loan Snapshot", icon:IC_HOME, status:"active",
+    blurb:"See key Fannie Mae limits and location information for a property, and optionally compare them against your deal details." },
+  { id:"market", title:"Market Research", icon:IC_CHART, status:"coming",
+    blurb:"Rate, refinance, and housing-market context for a conversation with a borrower." },
+  { id:"performance", title:"Loan Performance", icon:IC_PULSE, status:"coming",
+    blurb:"Historical loan-performance and disclosure datasets." }
+];
+
+const MEANS = {
+  loan:"The applicable maximum loan size under the conforming loan-limit rules for this location and property type. A loan below this threshold is not automatically approved or eligible — it is one threshold, not a lending decision.",
+  income:"The applicable income threshold returned for this location under HomeReady®. Meeting this income threshold alone does not establish complete HomeReady eligibility.",
+  oz:"Opportunity Zones are federally designated census tracts. This shows only whether the property’s tract is designated — it does not affect or determine loan eligibility."
+};
+
+// ===========================================================================
+let DATA=null, app=null;
+let view="home";
+let loading=false, result=null, error=null, lastQuery="";
+let showDeal=false;
+let deal={ income:"", loan:"", units:"1" };
+let loanLimitsCache=null;
+const ctx=()=>app?.getHostContext?.()||{};
+const EXAMPLE="13150 Worldgate Drive, Herndon, VA 20171";
+const money=(n)=> (n==null||isNaN(n)) ? "—" : "$"+Number(n).toLocaleString("en-US",{maximumFractionDigits:0});
+const numOf=(s)=>{ const n=Number(String(s==null?"":s).replace(/[^0-9.]/g,"")); return isFinite(n)&&n>0?n:null; };
+// Live currency formatting for monetary inputs ("$1,234,567") that preserves the
+// caret by digit-count, so typing/editing in the middle isn't disrupted.
+function formatMoneyInput(el){
+  if(!el) return;
+  const raw=el.value, pos=(el.selectionStart==null?raw.length:el.selectionStart);
+  const digitsBefore=(raw.slice(0,pos).match(/\d/g)||[]).length;
+  const digits=raw.replace(/\D/g,"");
+  if(!digits){ if(el.value!=="") el.value=""; return; }
+  const formatted="$"+Number(digits).toLocaleString("en-US");
+  if(formatted!==raw) el.value=formatted;
+  let idx=0,count=0;
+  while(idx<formatted.length && count<digitsBefore){ if(/\d/.test(formatted[idx])) count++; idx++; }
+  try{ if(document.activeElement===el) el.setSelectionRange(idx,idx); }catch(e){}
+}
+const UNIT_KEY={ "1":"oneUnitLimit","2":"twoUnitLimit","3":"threeUnitLimit","4":"fourUnitLimit" };
+
+// ---- orchestration (verified FIPS bridge) ----
+function parseAddress(raw){
+  const parts=String(raw||"").split(",").map(s=>s.trim()).filter(Boolean);
+  if(parts.length<3) return null;
+  const line1=parts[0].split(/\s+/);
+  const number=line1.shift()||"";
+  const street=line1.join(" ");
+  const city=parts[1];
+  const region=parts[parts.length-1].split(/\s+/).filter(Boolean);
+  const state=(region[0]||"").toUpperCase();
+  const zip=region[1]||"";
+  if(!number||!street||!city||!state) return null;
+  return { number, street, city, state, zip };
+}
+async function callOp(api_name, operation_id, params){
+  const r=await app.callServerTool({ name:"call_fnma_api", arguments:{ api_name, operation_id, ...params } });
+  if(r && r.isError) throw new Error((r.content&&r.content[0]&&r.content[0].text)||"Tool error");
+  const text=r&&r.content&&r.content[0]&&r.content[0].text;
+  try{ return JSON.parse(text); }catch{ return r&&r.structuredContent||{}; }
+}
+async function getLoanLimits(){ if(!loanLimitsCache) loanLimitsCache=await callOp("Loan Limits API","getAllLoanLimits",{}); return loanLimitsCache; }
+const countyFips=(t)=> String(t||"").slice(0,5);
+
+async function runSnapshot(raw){
+  const addr=parseAddress(raw);
+  if(!addr){ error="Couldn't read that address. Use: number street, city, ST zip."; result=null; loading=false; render(); return; }
+  // capture optional deal inputs from the DOM
+  readDeal();
+  loading=true; error=null; result=null; lastQuery=raw; render();
+  try{
+    const [income, oz, limits]=await Promise.all([
+      callOp("Income Limits API","getIncomeLimitsByAddress",addr),
+      callOp("Opportunity Zones API","validateOpportunityZoneByAddress",addr),
+      getLoanLimits()
+    ]);
+    const inc=(income&&income.incomeLimitsList&&income.incomeLimitsList[0])||{};
+    const ozr=(oz&&oz.result)||{};
+    const tract=inc.fips_code||ozr.censusTractNumber;
+    const loan=((limits&&limits.loanLimit)||[]).find(r=>String(r.fipsCode)===countyFips(tract))||null;
+    const resolved=(oz&&oz.streetAddress)?`${oz.streetAddress}, ${oz.city}, ${oz.state} ${String(oz.zip||"").slice(0,5)}`:`${addr.number} ${addr.street}, ${addr.city}, ${addr.state} ${addr.zip}`;
+    result={ income:inc, oz:ozr, loan, tract, resolved };
+  }catch(e){ error="Lookup failed: "+(e&&e.message?e.message:String(e)); }
+  loading=false; render();
+}
+function readDeal(){
+  const gi=(id)=>{ const el=document.getElementById(id); return el?el.value:undefined; };
+  const i=gi("d-income"), l=gi("d-loan"), u=gi("d-units");
+  if(i!==undefined) deal.income=i;
+  if(l!==undefined) deal.loan=l;
+  if(u!==undefined) deal.units=u;
+}
+
+// ===========================================================================
+// views
+// ===========================================================================
+function homeHtml(){
+  const cards=WORKFLOWS.map(w=>{
+    const soon=w.status!=="active";
+    const foot=soon?`<span class="t-soon">Coming soon</span>`:`<div class="t-cta">Start ›</div>`;
+    return `<button type="button" class="task${soon?" soon":""}"${soon?" disabled":` data-open="${w.id}"`}>
+      <span class="t-ic">${w.icon}</span>
+      <span class="t-body"><span class="t-title">${esc(w.title)}</span><span class="t-blurb">${esc(w.blurb)}</span>${foot}</span>
+    </button>`;
+  }).join("");
+  const exp=(DATA&&DATA.explorerUrl)?`<div class="exp-link">Looking for a specific API or endpoint? <button id="openexp" type="button">Open the API Explorer</button> — the technical view of every Fannie Mae API.</div>`:"";
+  return `<div class="wrap">
+    <div class="home-hd"><div class="kicker">Fannie Mae · Business Dashboard</div><h1>What would you like to do?</h1><p>Pick a task. Each one answers a business question — no APIs or endpoints required.</p></div>
+    <div class="tasks">${cards}</div>${exp}
+  </div>`;
+}
+
+function dealPanelHtml(){
+  if(!showDeal) return `<div class="lu-foot"><button class="linklike" id="tryex" type="button">Try an example</button><button class="linklike" id="adddeal" type="button">+ Add deal details (optional)</button></div>`;
+  const opt=(v)=>`<option value="${v}"${deal.units===v?" selected":""}>${v}-unit</option>`;
+  return `<div class="lu-foot"><button class="linklike" id="tryex" type="button">Try an example</button><button class="linklike" id="adddeal" type="button">− Hide deal details</button></div>
+    <div class="deal">
+      <div class="deal-f"><label>Qualifying income (annual)</label><input id="d-income" inputmode="numeric" placeholder="$120,000" value="${esc(deal.income)}" /></div>
+      <div class="deal-f"><label>Loan amount</label><input id="d-loan" inputmode="numeric" placeholder="$900,000" value="${esc(deal.loan)}" /></div>
+      <div class="deal-f units"><label>Units</label><select id="d-units">${opt("1")}${opt("2")}${opt("3")}${opt("4")}</select></div>
+      <div class="deal-note">Optional. If provided, we compare your numbers against the returned reference limits — a factual comparison, not an eligibility or approval decision.</div>
+    </div>`;
+}
+
+function loanCard(r){
+  if(!r.loan) return `<div class="card"><div class="c-hd">${IC_HOME}<span class="c-lab">Conforming loan limit</span></div>
+    <div class="c-primary" style="font-size:16px;color:var(--muted)">Not matched</div>
+    <div class="c-desc">No loan-limit row for county FIPS ${esc(countyFips(r.tract)||"?")}.</div></div>`;
+  const iss=(r.loan.issuers&&r.loan.issuers[0])||{};
+  const units=deal.units||"1";
+  const lim=iss[UNIT_KEY[units]];
+  const yr=String(r.loan.reportingYear||"").slice(0,4);
+  const rows=["1","2","3","4"].map(u=>`<div class="c-ref-row${u===units?" on":""}"><span class="rk">${u}-unit</span><span class="rv">${money(iss[UNIT_KEY[u]])}</span></div>`).join("");
+  // optional comparison: loan amount vs applicable conforming limit (factual only)
+  const L=numOf(deal.loan);
+  let cmp="";
+  if(L!=null && lim!=null){
+    const over=L>lim, diff=Math.abs(L-lim);
+    const main = over ? "Loan amount exceeds the conforming loan limit"
+               : diff===0 ? "Loan amount is at the conforming loan limit"
+               : "Loan amount is below the conforming loan limit";
+    const sub = diff===0 ? `${money(L)} equals the applicable ${money(lim)} limit.`
+              : `${money(L)} is ${money(diff)} ${over?"above":"below"} the applicable ${money(lim)} limit.`;
+    cmp=`<div class="cmp ${over?"over":"ok"}"><div class="cmp-main"><span class="cmp-ic">${over?"⚠":"✓"}</span><span>${main}</span></div><div class="cmp-sub">${sub}</div></div>`;
+  }
+  return `<div class="card"><div class="c-hd">${IC_HOME}<span class="c-lab">Conforming loan limit</span></div>
+    <div class="c-primary">${money(lim)}</div>
+    <div class="c-desc">${units}-unit property · ${esc(r.loan.countyName||"")}, ${esc(r.loan.stateCode||"")}</div>
+    ${cmp}
+    <div class="c-ref">${rows}</div>
+    <div class="c-src">FHFA conforming limit · ${esc(yr||"current")}</div>
+    <details class="means"><summary>What does this mean?</summary><p>${esc(MEANS.loan)}</p></details>
+  </div>`;
+}
+function incomeCard(r){
+  const inc=r.income||{};
+  const hr=inc.hr_income_limit;
+  const rural=inc.rural_indicator||inc.high_needs_rural_indicator;
+  const I=numOf(deal.income);
+  let cmp="";
+  if(I!=null && hr!=null){
+    const over=I>hr, diff=Math.abs(I-hr);
+    const main = over ? "Income exceeds the applicable HomeReady income limit"
+               : diff===0 ? "Income is at the applicable HomeReady income limit"
+               : "Income is below the applicable HomeReady income limit";
+    const sub = diff===0 ? `${money(I)} equals the applicable ${money(hr)} income limit.`
+              : `${money(I)} is ${money(diff)} ${over?"above":"below"} the applicable ${money(hr)} income limit.`;
+    cmp=`<div class="cmp ${over?"over":"ok"}"><div class="cmp-main"><span class="cmp-ic">${over?"⚠":"✓"}</span><span>${main}</span></div><div class="cmp-sub">${sub}</div><div class="cmp-cav">Income limits are one component of HomeReady eligibility.</div></div>`;
+  }
+  return `<div class="card"><div class="c-hd">${IC_CASH}<span class="c-lab">HomeReady income limit</span></div>
+    <div class="c-primary">${money(hr)}</div>
+    <div class="c-desc">Applicable HomeReady® income limit for this area</div>
+    ${cmp}
+    <div class="c-ref"><div class="c-ref-row"><span class="rk">Very-low-income limit</span><span class="rv">${money(inc.vli_income_limit)}</span></div>${rural?`<div class="c-ref-row"><span class="rk">Area flag</span><span class="rv">Rural / high-needs</span></div>`:""}</div>
+    <div class="c-src">Fannie Mae Income Limits (AMI-based)</div>
+    <details class="means"><summary>What does this mean?</summary><p>${esc(MEANS.income)}</p></details>
+  </div>`;
+}
+function ozCard(r){
+  const yes=/^y/i.test(String(r.oz&&r.oz.belongsToOpportunityZones||""));
+  return `<div class="card"><div class="c-hd">${IC_PIN}<span class="c-lab">Opportunity Zone</span></div>
+    <div class="oz-primary ${yes?"yes":"no"}"><span class="oz-mark"></span>${yes?"In an Opportunity Zone":"Not in an Opportunity Zone"}</div>
+    <div class="c-desc">Designation for census tract ${esc(r.tract||"—")}</div>
+    <div class="c-src" style="margin-top:auto;padding-top:12px">Fannie Mae Opportunity Zones</div>
+    <details class="means"><summary>What does this mean?</summary><p>${esc(MEANS.oz)}</p></details>
+  </div>`;
+}
+
+function resultsHtml(){
+  if(loading){
+    const sk=(ic,lab)=>`<div class="card"><div class="c-hd">${ic}<span class="c-lab">${lab}</span></div><div class="sk"></div><div class="sk sm"></div></div>`;
+    return `<div class="prop-id"><div class="pid-ic">${IC_HOME}</div><div class="pid-body"><div class="pid-addr">Checking ${esc(lastQuery)}…</div></div></div>
+      <div class="snap-head"><h2>Property snapshot</h2></div>
+      <div class="cards">${sk(IC_HOME,"Conforming loan limit")}${sk(IC_CASH,"HomeReady income limit")}${sk(IC_PIN,"Opportunity Zone")}</div>`;
+  }
+  if(error) return `<div class="err"><b>Something went wrong</b>${esc(error)}</div>`;
+  if(!result) return "";
+  const county = result.loan ? `${esc(result.loan.countyName)}, ${esc(result.loan.stateCode)}` : "County not matched";
+  // "Deal snapshot" once at least one deal-specific value (income or loan) is entered; else "Property snapshot".
+  const hasDeal = (numOf(deal.loan)!=null) || (numOf(deal.income)!=null);
+  const headTitle = hasDeal ? "Deal snapshot" : "Property snapshot";
+  const headNote = hasDeal ? "Your values compared to the applicable limits" : "Applicable limits & designation for this location";
+  return `<div class="prop-id">
+      <div class="pid-ic">${IC_HOME}</div>
+      <div class="pid-body"><div class="pid-addr">${esc(result.resolved)}</div><div class="pid-meta"><b>${county}</b> · Census tract ${esc(result.tract||"—")}</div></div>
+      <button class="linklike pid-new" id="clear" type="button">New lookup</button>
+    </div>
+    <div class="snap-head"><h2>${headTitle}</h2><span class="sh-note">${headNote}</span></div>
+    <div class="cards">${loanCard(result)}${incomeCard(result)}${ozCard(result)}</div>
+    <div class="support">
+      <div class="disclaimer">These are <b>reference limits and a designation</b> for the property's location. Any comparison shown against your inputs is a factual numeric check — <b>not a loan approval or a complete borrower-eligibility determination</b>.</div>
+      <div class="sources">Sources: Fannie Mae Loan Limits, Income Limits, and Opportunity Zones APIs.</div>
+    </div>`;
+}
+
+function snapshotHtml(){
+  return `<div class="wrap">
+    <button class="back" id="back" type="button">‹ All tasks</button>
+    <div class="wf-hd"><div class="kicker">Property &amp; Loan Snapshot</div><h1>Look up a property</h1><p>Enter a property address to see key Fannie Mae limits and location information, with the option to compare them against your deal details.</p></div>
+    <div class="lookup">
+      <div class="lu-row">
+        <input id="addr" type="text" placeholder="${esc(EXAMPLE)}" value="${esc(lastQuery)}" autocomplete="off" />
+        <button class="go" id="go" type="button"${loading?" disabled":""}>${loading?"Checking…":"Look up"}</button>
+      </div>
+      ${dealPanelHtml()}
+    </div>
+    ${resultsHtml()}
+  </div>`;
+}
+
+function render(){
+  try{ document.documentElement.classList.toggle("dark", ctx().theme==="dark"); }catch{}
+  const root=document.getElementById("root");
+  root.innerHTML=(view==="snapshot")?snapshotHtml():homeHtml();
+  wire(root);
+}
+function wire(root){
+  root.querySelectorAll("[data-open]").forEach(b=> b.addEventListener("click",()=>{ view=b.dataset.open; result=null; error=null; lastQuery=""; showDeal=false; deal={income:"",loan:"",units:"1"}; render(); }));
+  const oe=root.querySelector("#openexp"); if(oe) oe.addEventListener("click", async ()=>{ try{ await app.openLink({ url:DATA.explorerUrl }); }catch(e){} });
+  const back=root.querySelector("#back"); if(back) back.addEventListener("click",()=>{ view="home"; render(); });
+  const input=root.querySelector("#addr"), go=root.querySelector("#go");
+  const submit=()=>{ const v=(input&&input.value||"").trim(); if(v&&!loading) runSnapshot(v); };
+  if(go) go.addEventListener("click", submit);
+  // keep the typed address in sync so a re-render (e.g. toggling deal details) never wipes it
+  if(input) input.addEventListener("input",(e)=>{ lastQuery=e.target.value; });
+  if(input) input.addEventListener("keydown",(e)=>{ if(e.key==="Enter") submit(); });
+  const ex=root.querySelector("#tryex"); if(ex) ex.addEventListener("click",()=>{ readDeal(); lastQuery=EXAMPLE; runSnapshot(EXAMPLE); });
+  const ad=root.querySelector("#adddeal"); if(ad) ad.addEventListener("click",()=>{ readDeal(); showDeal=!showDeal; render(); });
+  const du=root.querySelector("#d-units"); if(du) du.addEventListener("change",()=>{ readDeal(); if(result) render(); });
+  ["d-income","d-loan"].forEach(id=>{ const el=root.querySelector("#"+id); if(el){ formatMoneyInput(el); el.addEventListener("input",()=>formatMoneyInput(el)); } });
+  const clr=root.querySelector("#clear"); if(clr) clr.addEventListener("click",()=>{ result=null; error=null; lastQuery=""; render(); const f=document.getElementById("addr"); if(f) f.focus(); });
+}
+
+(async()=>{
+  app=new App({name:"FnmaBusinessDashboard",version:"0.3.0"},{availableDisplayModes:["inline","fullscreen"]},{autoResize:true});
+  app.ontoolresult=(res)=>{ try{ DATA=res?.structuredContent ?? JSON.parse(res.content[0].text); }catch{ DATA=DATA||{}; } render(); };
+  app.onhostcontextchanged=()=>render();
+  await app.connect();
+  render();
+  console.log("[fnma business dashboard] PoC v0.3 — DEV:", DEV);
+})();
+</script>
