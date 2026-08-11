@@ -20,8 +20,8 @@ const handler = createMcpHandler(
     server.tool(
       "call_fnma_api",
       "Directly call a Fannie Mae API operation and get plain JSON back -- no widget is rendered. " +
-        "Use this instead of fnma_show_api_detail when the user explicitly wants raw data/text " +
-        "rather than the visual catalog, or on a surface that can't render widgets. Pass api_name " +
+        "Use this instead of the fnma_show_explorer widget when the user explicitly wants raw data/text " +
+        "rather than the visual Explorer, or on a surface that can't render widgets. Pass api_name " +
         "(exact name from list_apis) and operation_id, plus whichever params that operation needs. " +
         BATCH_ENCODING_NOTE,
       {

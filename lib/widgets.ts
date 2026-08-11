@@ -1,6 +1,4 @@
-import { z } from "zod";
-import { API_CATALOG, runOperation } from "./fanniemae";
-import { OPERATION_PARAMS, BATCH_ENCODING_NOTE } from "./operation-params";
+import { API_CATALOG } from "./fanniemae";
 import { withBusinessLine, BUSINESS_LINE_ORDER } from "./business-line";
 import { WIDGETS } from "../app/_widgets.js";
 
@@ -39,96 +37,28 @@ function explorerUrl(): string | null {
 }
 
 export function registerWidgets(server: any) {
-  server.registerTool(
-    "fnma_show_catalog",
-    {
-      title: "Show the Fannie Mae API catalog (overview)",
-      description:
-        "Render all 16 Fannie Mae public APIs as grouped cards -- what each " +
-        "contains, and which are live (clickable) vs catalog-only. Cards can " +
-        "be grouped by business line (Single Family / Multifamily / Both / " +
-        "Market & Reference) or by function. Use for " +
-        "'what Fannie Mae APIs are there', 'show me the catalog', or a " +
-        "general overview request. No parameters, no network call.",
-      inputSchema: {},
-      _meta: { ui: { resourceUri: widgetUri("catalog") } },
-    },
-    async () => {
-      return {
-        content: [{ type: "text", text: `Rendered the Fannie Mae API catalog (${API_CATALOG.length} APIs). Don't restate the list.` }],
-        structuredContent: { apis: API_CATALOG.map(withBusinessLine), businessLineOrder: BUSINESS_LINE_ORDER, explorerUrl: explorerUrl() },
-        _meta: { ui: { resourceUri: widgetUri("catalog") } },
-      };
-    }
-  );
-
-  server.registerTool(
-    "fnma_show_api_detail",
-    {
-      title: "Show one Fannie Mae API's details (and optionally run an operation)",
-      description:
-        "Render one specific Fannie Mae API's details as a widget: description " +
-        "and, if implemented, its available operations with inline execution. " +
-        "Pass api_name matching a name from fnma_show_catalog. To actually run " +
-        "a live operation, also pass operation_id and whichever of the other " +
-        "params that specific operation needs (see the operation's own params " +
-        "list from a prior fnma_show_api_detail call, or list_apis). " +
-        BATCH_ENCODING_NOTE,
-      inputSchema: {
-        api_name: z.string().describe("Exact API name from the catalog, e.g. 'Loan Limits API'"),
-        operation_id: z.string().optional().describe("Operation id to execute. Omit to just show the API's details without running anything."),
-        ...OPERATION_PARAMS,
-      },
-      _meta: { ui: { resourceUri: widgetUri("api-detail") } },
-    },
-    async ({ api_name, operation_id, ...params }: { api_name: string; operation_id?: string; [key: string]: any }) => {
-      const entry = API_CATALOG.find((a) => a.name.toLowerCase() === api_name.toLowerCase());
-      if (!entry) {
-        return {
-          content: [{ type: "text", text: `No API found matching "${api_name}". Check fnma_show_catalog for exact names.` }],
-          isError: true,
-        };
-      }
-
-      let lastResult: { operationId: string; data: any } | null = null;
-      if (operation_id && entry.implemented) {
-        const data = await runOperation(operation_id, params as Record<string, any>);
-        lastResult = { operationId: operation_id, data };
-      }
-
-      const payload = { ...withBusinessLine(entry), lastResult };
-
-      return {
-        content: [
-          {
-            type: "text",
-            text: lastResult
-              ? `Ran ${operation_id} on ${entry.name}. Result is shown in the widget -- don't restate it.`
-              : `Showing details for ${entry.name}. Don't restate them.`,
-          },
-        ],
-        structuredContent: payload,
-        _meta: { ui: { resourceUri: widgetUri("api-detail") } },
-      };
-    }
-  );
-
-  // --- NEW: docked fullscreen Explorer (additive; does not affect the catalog) ---
-  // Renders widget/catalog-explorer.html as a large, docked, in-conversation
-  // workspace (APIs | Endpoints | compose + tabbed results). Same data as
-  // fnma_show_catalog; runs operations through the existing call_fnma_api tool.
-  // Fullscreen is still gated by Claude client bug anthropics/claude-ai-mcp#636
-  // for remote transports, so today it renders inline; the docked fullscreen
-  // path lights up when that client bug clears.
+  // --- API Explorer: the single browse-and-run surface for developers/admins ---
+  // Renders widget/catalog-explorer.html. Opens to the catalog GALLERY (grouped
+  // cards of every API) as its front door and drills into a docked 3-pane
+  // workspace (APIs | Endpoints | compose + tabbed results) per API. This
+  // absorbed the standalone Catalog, which was retired 2026-08-11 (the old
+  // fnma_show_catalog / fnma_show_api_detail tools + widgets/catalog.html +
+  // widget/api-detail.html were removed). See
+  // claude/fnma-surface-consolidation-eval.md. Operations run through the
+  // existing call_fnma_api tool.
   server.registerTool(
     "fnma_show_explorer",
     {
-      title: "Open the Fannie Mae API Explorer (fullscreen workspace)",
+      title: "Show the Fannie Mae API catalog / Explorer (browse + run every API)",
       description:
-        "Open the Fannie Mae API catalog as a large, docked, in-conversation " +
-        "workspace: browse APIs, pick an endpoint, run it live, and view results " +
-        "as tabs (table/chart/filters/CSV). Same data as fnma_show_catalog; use " +
-        "when the user wants a bigger, explorer-style surface. No parameters.",
+        "Open the Fannie Mae API Explorer: the single surface for browsing and " +
+        "running all 16 Fannie Mae public APIs. Opens to a catalog gallery -- " +
+        "grouped cards of every API with descriptions, business line, and status " +
+        "(live / unreachable / catalog-only) -- as its front door; click any live " +
+        "API to drill into a docked workspace to pick an endpoint, run it live, and " +
+        "view results as tabs (table/chart/filters/CSV). Use for 'what Fannie Mae " +
+        "APIs are there', 'show me the (API) catalog', a general overview, or any " +
+        "request to browse or run a specific API. No parameters.",
       inputSchema: {},
       _meta: { ui: { resourceUri: widgetUri("catalog-explorer") } },
     },
@@ -145,7 +75,7 @@ export function registerWidgets(server: any) {
     }
   );
 
-  // --- NEW: Business Dashboard (additive; business-user, task-oriented surface) ---
+  // --- Business Dashboard (business-user, task-oriented surface) ---
   // Renders widget/dashboard.html: a "What would you like to do?" workflow launcher.
   // V1 workflow "Property & Loan Snapshot" takes a property address and shows the
   // applicable conforming loan limit, HomeReady income limit, and Opportunity Zone
@@ -158,7 +88,7 @@ export function registerWidgets(server: any) {
       title: "Open the Fannie Mae Business Dashboard (task-oriented, business users)",
       description:
         "Open the Fannie Mae Business Dashboard: a business-user, task-oriented " +
-        "surface (as opposed to the API-oriented catalog/Explorer). V1 workflow " +
+        "surface (as opposed to the API-oriented Explorer). V1 workflow " +
         "'Property & Loan Snapshot' takes a property address and shows the " +
         "applicable conforming loan limit, HomeReady income limit, and Opportunity " +
         "Zone designation for that location, with optional comparison against " +
@@ -176,20 +106,6 @@ export function registerWidgets(server: any) {
         _meta: { ui: { resourceUri: widgetUri("dashboard") } },
       };
     }
-  );
-
-  server.registerResource(
-    "Fannie Mae catalog widget",
-    widgetUri("catalog"),
-    { title: "Fannie Mae API catalog", mimeType: APP_MIME },
-    async () => ({ contents: [{ uri: widgetUri("catalog"), mimeType: APP_MIME, text: widgetHtml("catalog"), _meta: APP_UI_META }] })
-  );
-
-  server.registerResource(
-    "Fannie Mae API detail widget",
-    widgetUri("api-detail"),
-    { title: "Fannie Mae API detail", mimeType: APP_MIME },
-    async () => ({ contents: [{ uri: widgetUri("api-detail"), mimeType: APP_MIME, text: widgetHtml("api-detail"), _meta: APP_UI_META }] })
   );
 
   server.registerResource(
