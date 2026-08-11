@@ -63,10 +63,13 @@
   .seg button:not(.on):hover{color:var(--body)}
   .tb-right{margin-left:auto;display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
   .disp{display:inline-flex;gap:5px;flex:0 0 auto}
-  .disp-btn{display:inline-flex;align-items:center;gap:5px;font-family:inherit;font-size:10.5px;font-weight:700;color:var(--muted);background:var(--paper);border:1px solid var(--slate);border-radius:6px;padding:6px 9px;cursor:pointer;line-height:1}
-  .disp-btn:hover{color:var(--body);border-color:var(--muted)}
+  /* ghost/text utility control: no border or fill at rest, muted + small; a
+     subtle hover tint keeps it discoverable without reading as a CTA */
+  .disp-btn{display:inline-flex;align-items:center;gap:5px;font-family:inherit;font-size:10.5px;font-weight:600;color:var(--muted);background:transparent;border:none;border-radius:6px;padding:4px 6px;cursor:pointer;line-height:1;transition:color .12s,background .12s}
+  .disp-btn:hover{color:var(--body);background:var(--off)}
   .disp-btn:active{opacity:.65}
-  .disp-btn>span[aria-hidden]{font-size:12px}
+  .disp-btn>span[aria-hidden]{display:inline-flex}
+  .disp-btn>span[aria-hidden] svg{width:12px;height:12px}
   .app-link{display:inline-flex;align-items:center;gap:5px;font-family:inherit;font-size:10.5px;font-weight:700;color:var(--paper);background:var(--accent);border:1px solid var(--accent);border-radius:6px;padding:6px 10px;cursor:pointer;line-height:1;text-decoration:none}
   .app-link:hover{opacity:.9}
   .app-link:active{opacity:.7}
@@ -329,7 +332,9 @@ const isFs=()=> (ctx().displayMode||"inline")==="fullscreen";
 // ===========================================================================
 // display-mode + app-link controls (host-gated; ported from catalog.html)
 // ===========================================================================
-const DISPLAY_META={fullscreen:["⛶","Full screen"],pip:["◲","Pop out"],inline:["▭","Collapse"]};
+const IC_EXPAND='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>';
+const IC_COLLAPSE='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/></svg>';
+const DISPLAY_META={fullscreen:[IC_EXPAND,"Expand"],pip:["◲","Pop out"],inline:[IC_COLLAPSE,"Collapse"]};
 function displayControlsHtml(){
   const c=ctx();
   const avail=Array.isArray(c.availableDisplayModes)?c.availableDisplayModes:[];
@@ -812,7 +817,7 @@ function wireGallery(root){
     card.addEventListener("click", open);
     card.addEventListener("keydown",(e)=>{ if(e.key==="Enter"||e.key===" "){ e.preventDefault(); open(); } });
   });
-  wireDisplay(root);   // Full screen / Collapse (widget display mode)
+  wireDisplay(root);   // Expand / Collapse (widget display mode)
   wireAppLink(root);   // Open in browser (hosted /explorer)
 }
 
