@@ -136,6 +136,22 @@
   .means>summary:hover{color:var(--body)}
   .means p{font-size:10.5px;color:var(--muted);line-height:1.5;margin:8px 0 2px}
 
+  /* Snapshot enhancement: recent conforming loan-limit history */
+  .lt{margin-top:12px;padding-top:11px;border-top:1px solid var(--line)}
+  .lt-toggle{font-size:10px}
+  .lt-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:9px}
+  .lt-lab{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+  .lt-sum{font-size:11px;color:var(--body);line-height:1.45;margin-bottom:10px}
+  .lt-note{font-size:11px;color:var(--muted);line-height:1.45}
+  .lt-rows{display:flex;flex-direction:column;gap:5px}
+  .lt-row{display:grid;grid-template-columns:32px 1fr auto;gap:9px;align-items:center;font-size:10.5px}
+  .lt-y{color:var(--muted);font-variant-numeric:tabular-nums}
+  .lt-track{height:8px;background:var(--off);border-radius:999px;overflow:hidden}
+  .lt-fill{display:block;height:100%;background:var(--slate);border-radius:999px}
+  .lt-row.cur .lt-fill{background:var(--accent)}
+  .lt-row.cur .lt-y,.lt-row.cur .lt-v{color:var(--accent);font-weight:700}
+  .lt-v{color:var(--body);font-weight:700;font-variant-numeric:tabular-nums}
+
   /* Opportunity Zone -- simplified, no nested box */
   .oz-primary{display:flex;align-items:center;gap:9px;font-size:17px;font-weight:800;line-height:1.2}
   .oz-primary .oz-mark{flex:0 0 auto;width:11px;height:11px;border-radius:50%}
@@ -192,6 +208,9 @@ if(!DEV){
       { stateCode:"VA", countyName:"Fairfax County", reportingYear:20260101, fipsCode:"51059", issuers:[{ issuerType:"FHFA", oneUnitLimit:1249125, twoUnitLimit:1599375, threeUnitLimit:1933200, fourUnitLimit:2402625 }] },
       { stateCode:"VA", countyName:"Fairfax City of", reportingYear:20260101, fipsCode:"51600", issuers:[{ issuerType:"FHFA", oneUnitLimit:1249125, twoUnitLimit:1599375, threeUnitLimit:1933200, fourUnitLimit:2402625 }] },
       { stateCode:"CA", countyName:"Los Angeles County", reportingYear:20260101, fipsCode:"06037", issuers:[{ issuerType:"FHFA", oneUnitLimit:1249125, twoUnitLimit:1599375, threeUnitLimit:1933200, fourUnitLimit:2402625 }] }
+    ] },
+    getHistoricalLoanLimits: { loanLimit:[
+      { stateCode:"VA", countyName:"Fairfax County", reportingYear:20210101, fipsCode:"51059", issuers:[{ issuerType:"FHFA", oneUnitLimit:822375, twoUnitLimit:1053000, threeUnitLimit:1272750, fourUnitLimit:1581750 }] }
     ] },
     getMostRecentRaliWeek: { "week-ending-date":"2026-07-31", "volume-index":163.9, "count-index":93.9, "rate-term-volume":59.5, "rate-term-count":26, "cash-out-volume":104.4, "cash-out-count":67.9 },
     getRaliByWeekRange: { "rali-dataset":[
@@ -257,6 +276,8 @@ let showDeal=false;
 let deal={ income:"", loan:"", units:"1" };
 let loanLimitsCache=null;
 let market={ loading:false, result:null, error:null, loaded:false };
+let showTrend=false;
+let limitTrend={ loading:false, error:null, byYear:null, fips:null };
 const ctx=()=>app?.getHostContext?.()||{};
 const isFs=()=> (ctx().displayMode||"inline")==="fullscreen";
 // Host-gated display-mode control (Expand / Collapse) -- only offers a mode
@@ -319,11 +340,62 @@ async function callOp(api_name, operation_id, params){
 async function getLoanLimits(){ if(!loanLimitsCache) loanLimitsCache=await callOp("Loan Limits API","getAllLoanLimits",{}); return loanLimitsCache; }
 const countyFips=(t)=> String(t||"").slice(0,5);
 
+// ---- Snapshot enhancement: recent conforming loan-limit history for the matched county ----
+// Lazy: only fetched when the user opens "Show recent limit history". getHistoricalLoanLimits
+// returns the full national table per year (~1.2MB), so we fetch the last few years on demand,
+// pull just the matched county's row (by FIPS), and cache all unit limits so changing the unit
+// selector recomputes from cache without refetching.
+const TREND_YEARS_BACK=5;
+function limitTrendSeries(fips, unitKey){
+  if(!(limitTrend.byYear && limitTrend.fips===fips)) return [];
+  return Object.keys(limitTrend.byYear).map(Number).sort((a,b)=>a-b)
+    .map(y=>({ y, v:(limitTrend.byYear[y]||{})[unitKey] })).filter(p=>p.v!=null);
+}
+async function loadLimitTrend(){
+  if(!result || !result.loan) return;
+  const r=result, fips=String(r.loan.fipsCode||"");
+  if(!fips){ render(); return; }
+  if(limitTrend.byYear && limitTrend.fips===fips){ render(); return; }   // already cached for this county
+  const curYear=+String(r.loan.reportingYear||"").slice(0,4);
+  limitTrend.loading=true; limitTrend.error=null; limitTrend.fips=fips; limitTrend.byYear=null; render();
+  try{
+    const byYear={};
+    if(curYear) byYear[curYear]=(r.loan.issuers&&r.loan.issuers[0])||{};   // current year already in hand
+    const years=[]; for(let y=curYear-TREND_YEARS_BACK; y<curYear; y++) if(y>0) years.push(y);
+    const res=await Promise.all(years.map(y=> callOp("Loan Limits API","getHistoricalLoanLimits",{ year:y }).then(d=>({y,d})).catch(()=>({y,d:null}))));
+    for(const it of res){ const row=((it.d&&it.d.loanLimit)||[]).find(x=>String(x.fipsCode)===fips); if(row) byYear[it.y]=(row.issuers&&row.issuers[0])||{}; }
+    limitTrend.byYear=byYear;
+  }catch(e){ limitTrend.error="Couldn't load the limit history right now."; }
+  limitTrend.loading=false; render();
+}
+function limitTrendHtml(r, units){
+  const fips=String(r.loan.fipsCode||"");
+  if(!showTrend) return `<button class="linklike lt-toggle" id="lt-toggle" type="button">Show recent limit history</button>`;
+  const series=limitTrendSeries(fips, UNIT_KEY[units]);
+  let body;
+  if(limitTrend.loading && series.length<2){ body=`<div class="lt-note">Loading recent limits…</div>`; }
+  else if(limitTrend.error){ body=`<div class="lt-note">${esc(limitTrend.error)}</div>`; }
+  else if(series.length<2){ body=`<div class="lt-note">Recent limit history isn't available for this county.</div>`; }
+  else{
+    const max=Math.max(...series.map(p=>p.v));
+    const first=series[0], last=series[series.length-1];
+    const pct=first.v?((last.v-first.v)/first.v*100):0;
+    const summary = Math.abs(pct)<0.5
+      ? `The ${units}-unit conforming limit for ${esc(r.loan.countyName||"this county")} has held near ${money(last.v)} since ${first.y}.`
+      : `The ${units}-unit conforming limit for ${esc(r.loan.countyName||"this county")} ${pct>0?"rose":"fell"} from ${money(first.v)} (${first.y}) to ${money(last.v)} (${last.y}) — ${pct>0?"up":"down"} ${Math.abs(pct).toFixed(0)}%.`;
+    const rows=series.map(p=>{ const w=Math.max(3,Math.round(p.v/max*100)); const cur=p.y===last.y;
+      return `<div class="lt-row${cur?" cur":""}"><span class="lt-y">${p.y}</span><span class="lt-track"><span class="lt-fill" style="width:${w}%"></span></span><span class="lt-v">${money(p.v)}</span></div>`; }).join("");
+    body=`<div class="lt-sum">${esc(summary)}</div><div class="lt-rows">${rows}</div>`;
+  }
+  return `<div class="lt"><div class="lt-head"><span class="lt-lab">Recent conforming limit · ${units}-unit</span><button class="linklike lt-toggle" id="lt-toggle" type="button">Hide</button></div>${body}</div>`;
+}
+
 async function runSnapshot(raw){
   const addr=parseAddress(raw);
   if(!addr){ error="Couldn't read that address. Use: number street, city, ST zip."; result=null; loading=false; render(); return; }
   // capture optional deal inputs from the DOM
   readDeal();
+  showTrend=false; limitTrend={ loading:false, error:null, byYear:null, fips:null };
   loading=true; error=null; result=null; lastQuery=raw; render();
   try{
     const [income, oz, limits]=await Promise.all([
@@ -455,6 +527,7 @@ function loanCard(r){
     ${cmp}
     <div class="c-ref">${rows}</div>
     <div class="c-src">FHFA conforming limit · ${esc(yr||"current")}</div>
+    ${limitTrendHtml(r, units)}
     <details class="means"><summary>What does this mean?</summary><p>${esc(MEANS.loan)}</p></details>
   </div>`;
 }
@@ -628,7 +701,7 @@ function wire(root){
   root.querySelectorAll("[data-open]").forEach(b=> b.addEventListener("click",()=>{
     view=b.dataset.open;
     if(view==="market"){ if(!market.loaded && !market.loading) runMarket(); else render(); return; }
-    result=null; error=null; lastQuery=""; showDeal=false; deal={income:"",loan:"",units:"1"}; render();
+    result=null; error=null; lastQuery=""; showDeal=false; deal={income:"",loan:"",units:"1"}; showTrend=false; limitTrend={ loading:false, error:null, byYear:null, fips:null }; render();
   }));
   const mrf=root.querySelector("#mkt-refresh"); if(mrf) mrf.addEventListener("click",()=>{ market.loaded=false; runMarket(); });
   const mld=root.querySelector("#mkt-load"); if(mld) mld.addEventListener("click",()=> runMarket());
@@ -644,7 +717,8 @@ function wire(root){
   const ad=root.querySelector("#adddeal"); if(ad) ad.addEventListener("click",()=>{ readDeal(); showDeal=!showDeal; render(); });
   const du=root.querySelector("#d-units"); if(du) du.addEventListener("change",()=>{ readDeal(); if(result) render(); });
   ["d-income","d-loan"].forEach(id=>{ const el=root.querySelector("#"+id); if(el){ formatMoneyInput(el); el.addEventListener("input",()=>formatMoneyInput(el)); } });
-  const clr=root.querySelector("#clear"); if(clr) clr.addEventListener("click",()=>{ result=null; error=null; lastQuery=""; render(); const f=document.getElementById("addr"); if(f) f.focus(); });
+  const clr=root.querySelector("#clear"); if(clr) clr.addEventListener("click",()=>{ result=null; error=null; lastQuery=""; showTrend=false; limitTrend={ loading:false, error:null, byYear:null, fips:null }; render(); const f=document.getElementById("addr"); if(f) f.focus(); });
+  const ltt=root.querySelector("#lt-toggle"); if(ltt) ltt.addEventListener("click",()=>{ showTrend=!showTrend; if(showTrend) loadLimitTrend(); else render(); });
 }
 
 (async()=>{
