@@ -31,6 +31,17 @@
   body{font-family:var(--font);color:var(--body);background:var(--off);font-size:13px;color-scheme:light dark}
 
   .wrap{max-width:820px;margin:0 auto;padding:22px 22px 26px}
+  /* Fullscreen: fill the host viewport and use a little more width for the cards.
+     (Inline stays natural-flow -- no vh caps -- so host auto-resize sizes to fit.) */
+  body.fs .wrap{max-width:1040px;min-height:100vh}
+
+  /* top control row: holds the host-gated Full screen / Collapse button */
+  .view-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+  .disp{display:inline-flex;gap:6px;flex:0 0 auto}
+  .disp-btn{display:inline-flex;align-items:center;gap:6px;font-family:inherit;font-size:11px;font-weight:700;color:var(--muted);background:var(--paper);border:1px solid var(--slate);border-radius:8px;height:34px;padding:0 13px;cursor:pointer;line-height:1}
+  .disp-btn:hover{color:var(--body);border-color:var(--muted)}
+  .disp-btn:active{opacity:.7}
+  .disp-btn>span[aria-hidden]{font-size:12px}
 
   .kicker{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}
   .back{display:inline-flex;align-items:center;gap:5px;background:none;border:none;color:var(--muted);font-weight:700;font-size:11px;font-family:inherit;cursor:pointer;padding:0;margin-bottom:14px}
@@ -210,6 +221,23 @@ let showDeal=false;
 let deal={ income:"", loan:"", units:"1" };
 let loanLimitsCache=null;
 const ctx=()=>app?.getHostContext?.()||{};
+const isFs=()=> (ctx().displayMode||"inline")==="fullscreen";
+// Host-gated display-mode control (Full screen / Collapse) -- only offers a mode
+// the host advertises in availableDisplayModes; toggles via requestDisplayMode({mode}).
+const DISPLAY_META={fullscreen:["⛶","Full screen"],inline:["▭","Collapse"]};
+function displayControlsHtml(){
+  const c=ctx();
+  const avail=Array.isArray(c.availableDisplayModes)?c.availableDisplayModes:[];
+  const cur=c.displayMode||"inline";
+  const btns=["fullscreen","inline"].filter(m=>avail.includes(m)&&m!==cur)
+    .map(m=>{const[g,l]=DISPLAY_META[m];return `<button type="button" class="disp-btn" data-mode="${m}" title="${esc(l)}"><span aria-hidden="true">${g}</span><span>${esc(l)}</span></button>`;}).join("");
+  return btns?`<div class="disp">${btns}</div>`:"";
+}
+function wireDisplay(scope){
+  (scope||document).querySelectorAll(".disp-btn").forEach(b=>{
+    b.addEventListener("click",()=>{ try{ app.requestDisplayMode&&app.requestDisplayMode({ mode:b.dataset.mode }); }catch(e){ console.warn("[fnma] requestDisplayMode failed:",e); } });
+  });
+}
 const EXAMPLE="13150 Worldgate Drive, Herndon, VA 20171";
 const money=(n)=> (n==null||isNaN(n)) ? "—" : "$"+Number(n).toLocaleString("en-US",{maximumFractionDigits:0});
 const numOf=(s)=>{ const n=Number(String(s==null?"":s).replace(/[^0-9.]/g,"")); return isFinite(n)&&n>0?n:null; };
@@ -295,7 +323,10 @@ function homeHtml(){
   }).join("");
   const exp=(DATA&&DATA.explorerUrl)?`<div class="exp-link">Looking for a specific API or endpoint? <button id="openexp" type="button">Open the API Explorer</button> — the technical view of every Fannie Mae API.</div>`:"";
   return `<div class="wrap">
-    <div class="home-hd"><div class="kicker">Fannie Mae · Business Dashboard</div><h1>What would you like to do?</h1><p>Pick a task. Each one answers a business question — no APIs or endpoints required.</p></div>
+    <div class="view-top">
+      <div class="home-hd"><div class="kicker">Fannie Mae · Business Dashboard</div><h1>What would you like to do?</h1><p>Pick a task. Each one answers a business question — no APIs or endpoints required.</p></div>
+      ${displayControlsHtml()}
+    </div>
     <div class="tasks">${cards}</div>${exp}
   </div>`;
 }
@@ -405,7 +436,10 @@ function resultsHtml(){
 
 function snapshotHtml(){
   return `<div class="wrap">
-    <button class="back" id="back" type="button">‹ All tasks</button>
+    <div class="view-top">
+      <button class="back" id="back" type="button">‹ All tasks</button>
+      ${displayControlsHtml()}
+    </div>
     <div class="wf-hd"><div class="kicker">Property &amp; Loan Snapshot</div><h1>Look up a property</h1><p>Enter a property address to see key Fannie Mae limits and location information, with the option to compare them against your deal details.</p></div>
     <div class="lookup">
       <div class="lu-row">
@@ -420,11 +454,14 @@ function snapshotHtml(){
 
 function render(){
   try{ document.documentElement.classList.toggle("dark", ctx().theme==="dark"); }catch{}
+  document.body.classList.toggle("fs", isFs());
+  document.body.classList.toggle("inline", !isFs());
   const root=document.getElementById("root");
   root.innerHTML=(view==="snapshot")?snapshotHtml():homeHtml();
   wire(root);
 }
 function wire(root){
+  wireDisplay(root);
   root.querySelectorAll("[data-open]").forEach(b=> b.addEventListener("click",()=>{ view=b.dataset.open; result=null; error=null; lastQuery=""; showDeal=false; deal={income:"",loan:"",units:"1"}; render(); }));
   const oe=root.querySelector("#openexp"); if(oe) oe.addEventListener("click", async ()=>{ try{ await app.openLink({ url:DATA.explorerUrl }); }catch(e){} });
   const back=root.querySelector("#back"); if(back) back.addEventListener("click",()=>{ view="home"; render(); });
