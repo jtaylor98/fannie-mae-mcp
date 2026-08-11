@@ -161,6 +161,15 @@
   .err b{display:block;margin-bottom:3px}
   .sk{height:25px;width:66%;background:var(--off);border-radius:5px}
   .sk.sm{height:11px;width:46%;margin-top:9px}
+
+  /* National Market Snapshot (workflow #2) */
+  .cards.two{grid-template-columns:repeat(2,1fr)}
+  @media (max-width:680px){ .cards.two{grid-template-columns:1fr} }
+  .mkt-tools{display:flex;justify-content:flex-end;align-items:center;margin:2px 2px 12px;min-height:18px}
+  .interp{font-size:11.5px;color:var(--body);line-height:1.45;margin-top:10px}
+  .trend{display:inline-flex;align-items:center;gap:6px;margin-top:11px;font-size:11px;font-weight:700;color:var(--body);background:var(--off);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-variant-numeric:tabular-nums}
+  .trend .tr-ar{font-size:9px;color:var(--muted)}
+  .trend .tr-base{font-weight:400;color:var(--muted)}
 </style>
 
 <div id="root"><div style="padding:26px 16px;color:var(--muted);text-align:center">Loading…</div></div>
@@ -182,6 +191,23 @@ if(!DEV){
       { stateCode:"VA", countyName:"Fairfax County", reportingYear:20260101, fipsCode:"51059", issuers:[{ issuerType:"FHFA", oneUnitLimit:1249125, twoUnitLimit:1599375, threeUnitLimit:1933200, fourUnitLimit:2402625 }] },
       { stateCode:"VA", countyName:"Fairfax City of", reportingYear:20260101, fipsCode:"51600", issuers:[{ issuerType:"FHFA", oneUnitLimit:1249125, twoUnitLimit:1599375, threeUnitLimit:1933200, fourUnitLimit:2402625 }] },
       { stateCode:"CA", countyName:"Los Angeles County", reportingYear:20260101, fipsCode:"06037", issuers:[{ issuerType:"FHFA", oneUnitLimit:1249125, twoUnitLimit:1599375, threeUnitLimit:1933200, fourUnitLimit:2402625 }] }
+    ] },
+    getMostRecentRaliWeek: { "week-ending-date":"2026-07-31", "volume-index":163.9, "count-index":93.9, "rate-term-volume":59.5, "rate-term-count":26, "cash-out-volume":104.4, "cash-out-count":67.9 },
+    getRaliByWeekRange: { "rali-dataset":[
+      { "week-ending-date":"2026-07-31", "volume-index":163.9, "cash-out-volume":104.4, "rate-term-volume":59.5 },
+      { "week-ending-date":"2026-07-24", "volume-index":170.1, "cash-out-volume":106.7, "rate-term-volume":63.4 },
+      { "week-ending-date":"2026-07-17", "volume-index":181.3, "cash-out-volume":110.4, "rate-term-volume":70.9 },
+      { "week-ending-date":"2026-07-10", "volume-index":184, "cash-out-volume":108.9, "rate-term-volume":75.1 },
+      { "week-ending-date":"2026-07-03", "volume-index":168.8, "cash-out-volume":95.8, "rate-term-volume":73 },
+      { "week-ending-date":"2026-06-26", "volume-index":199.6, "cash-out-volume":110.9, "rate-term-volume":88.7 }
+    ] },
+    getConstructionSpendingBySectionAndSector: { constructionSpending:[
+      { "construction-spending-value":927260, "month-and-value-type":"Aug 2025", "month-label-type":"preliminary" },
+      { "construction-spending-value":919941, "month-and-value-type":"Jul 2025", "month-label-type":"revised" },
+      { "construction-spending-value":898686, "month-and-value-type":"Jul 2025", "month-label-type":"preliminary" },
+      { "construction-spending-value":903854, "month-and-value-type":"May 2025", "month-label-type":"revised" },
+      { "construction-spending-value":909661, "month-and-value-type":"Mar 2025", "month-label-type":" " },
+      { "construction-spending-value":946982, "month-and-value-type":"Jul 2024", "month-label-type":" " }
     ] }
   };
   App = class {
@@ -200,12 +226,13 @@ const IC_CASH='<svg viewBox="0 0 24 24"><path d="M12 2.5v19"/><path d="M16.5 6.5
 const IC_PIN='<svg viewBox="0 0 24 24"><path d="M12 21s-6.4-5.4-6.4-10.8A6.4 6.4 0 0 1 18.4 10C18.4 15.6 12 21 12 21z"/><circle cx="12" cy="9.8" r="2.3"/></svg>';
 const IC_CHART='<svg viewBox="0 0 24 24"><path d="M4 4v16h16"/><path d="M8 15l3-4 3 2 4-6"/></svg>';
 const IC_PULSE='<svg viewBox="0 0 24 24"><path d="M3 12h4l2-6 4 12 2-6h6"/></svg>';
+const IC_BUILD='<svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M6 21V5l7-2v18"/><path d="M13 21V9l5 2v10"/><path d="M9 8h.5M9 12h.5M9 16h.5"/></svg>';
 
 const WORKFLOWS = [
   { id:"snapshot", title:"Property & Loan Snapshot", icon:IC_HOME, status:"active",
     blurb:"See key Fannie Mae limits and location information for a property, and optionally compare them against your deal details." },
-  { id:"market", title:"Market Research", icon:IC_CHART, status:"coming",
-    blurb:"Rate, refinance, and housing-market context for a conversation with a borrower." },
+  { id:"market", title:"National Market Snapshot", icon:IC_CHART, status:"active",
+    blurb:"A quick national housing-market read — refinance activity and residential construction — for a borrower conversation." },
   { id:"performance", title:"Loan Performance", icon:IC_PULSE, status:"coming",
     blurb:"Historical loan-performance and disclosure datasets." }
 ];
@@ -216,6 +243,11 @@ const MEANS = {
   oz:"Opportunity Zones are federally designated census tracts. This shows only whether the property’s tract is designated — it does not affect or determine loan eligibility."
 };
 
+const MEANS_MKT = {
+  rali:"Fannie Mae's Refinance Application-Level Index tracks the volume of refinance mortgage applications nationally, indexed over time and split into rate/term and cash-out. It measures refinance demand — not interest rates, approvals, or a recommendation to refinance.",
+  constr:"The dollar value of residential construction put in place across the U.S., reported at a seasonally adjusted annual rate and surfaced through Fannie Mae's Construction Spending data. It's a national supply-side gauge of building activity — not a local figure, a home price, or a forecast."
+};
+
 // ===========================================================================
 let DATA=null, app=null;
 let view="home";
@@ -223,6 +255,7 @@ let loading=false, result=null, error=null, lastQuery="";
 let showDeal=false;
 let deal={ income:"", loan:"", units:"1" };
 let loanLimitsCache=null;
+let market={ loading:false, result:null, error:null, loaded:false };
 const ctx=()=>app?.getHostContext?.()||{};
 const isFs=()=> (ctx().displayMode||"inline")==="fullscreen";
 // Host-gated display-mode control (Expand / Collapse) -- only offers a mode
@@ -312,6 +345,51 @@ function readDeal(){
   if(i!==undefined) deal.income=i;
   if(l!==undefined) deal.loan=l;
   if(u!==undefined) deal.units=u;
+}
+
+// ---- National Market Snapshot (workflow #2): national, current indicators ----
+const MKT_MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const MKT_MI={Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
+function fmtIso(iso){ const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso||"")); return m?`${MKT_MONTHS[+m[2]-1]} ${+m[3]}, ${m[1]}`:String(iso||"—"); }
+const bil=(m)=> (m==null||isNaN(m)) ? "—" : "$"+(Number(m)/1000).toLocaleString("en-US",{maximumFractionDigits:1})+"B";
+const signPct=(p)=> (p>=0?"+":"")+p.toFixed(1)+"%";
+const arrowOf=(p)=> p>0?"▲":(p<0?"▼":"■");
+function trendWord(p){ const a=Math.abs(p); if(a<0.5) return "held roughly steady"; if(a<3) return p>0?"edged up":"edged down"; return p>0?"rose":"eased"; }
+function isoMinusDays(iso,days){ const t=new Date(iso+"T00:00:00Z").getTime()-days*86400000; return new Date(t).toISOString().slice(0,10); }
+function pickWeeksAgo(rows, latestIso, days){
+  if(!Array.isArray(rows)||!rows.length) return null;
+  const target=new Date(latestIso+"T00:00:00Z").getTime()-days*86400000;
+  let best=null, bestDiff=Infinity;
+  for(const r of rows){ const d=r&&r["week-ending-date"]; if(!d||d===latestIso) continue;
+    const diff=Math.abs(new Date(d+"T00:00:00Z").getTime()-target); if(diff<bestDiff){ bestDiff=diff; best=r; } }
+  return best;
+}
+function reduceConstr(rows){
+  const rank={revised:3,preliminary:2}; const best={};
+  (rows||[]).forEach(r=>{
+    const mv=String(r&&r["month-and-value-type"]||"").trim().split(/\s+/); const mi=MKT_MI[mv[0]], y=+mv[1];
+    if(mi==null||!y) return;
+    const key=y*12+mi, rk=rank[String(r["month-label-type"]||"").trim()]||1, cur=best[key];
+    if(!cur||rk>cur.rk) best[key]={ val:r["construction-spending-value"], label:`${mv[0]} ${y}`, mlabel:String(r["month-label-type"]||"").trim(), key, rk };
+  });
+  const arr=Object.values(best).sort((a,b)=>b.key-a.key); const latest=arr[0]||null;
+  return { latest, mom: latest?arr.find(x=>x.key===latest.key-1)||null:null, yoy: latest?arr.find(x=>x.key===latest.key-12)||null:null };
+}
+async function runMarket(){
+  market.loading=true; market.error=null; render();
+  try{
+    const [rali, constr]=await Promise.all([
+      callOp("Refinance Application-Level Index API","getMostRecentRaliWeek",{}),
+      callOp("Construction Spending API","getConstructionSpendingBySectionAndSector",{ section:"Total", sector:"Residential" })
+    ]);
+    let raliPrior=null; const wk=rali&&rali["week-ending-date"];
+    if(wk){ try{
+      const range=await callOp("Refinance Application-Level Index API","getRaliByWeekRange",{ startDate:isoMinusDays(wk,45), endDate:wk });
+      raliPrior=pickWeeksAgo((range&&range["rali-dataset"])||[], wk, 28);
+    }catch(e){} }
+    market.result={ rali, raliPrior, constr:reduceConstr((constr&&constr.constructionSpending)||[]) };
+  }catch(e){ market.error="Couldn't load the market snapshot: "+(e&&e.message?e.message:String(e)); }
+  market.loading=false; market.loaded=true; render();
 }
 
 // ===========================================================================
@@ -457,17 +535,99 @@ function snapshotHtml(){
   </div>`;
 }
 
+function marketHtml(){
+  return `<div class="wrap">
+    <div class="view-top">
+      <button class="back" id="back" type="button">‹ All tasks</button>
+      ${displayControlsHtml()}
+    </div>
+    <div class="wf-hd"><div class="kicker">National Market Snapshot</div><h1>National market snapshot</h1><p>Current U.S. housing-market indicators for a borrower conversation. These are <b>national</b> figures — not specific to a property, ZIP, or metro.</p></div>
+    ${marketBodyHtml()}
+  </div>`;
+}
+function marketBodyHtml(){
+  if(market.loading){
+    const sk=(ic,lab)=>`<div class="card"><div class="c-hd">${ic}<span class="c-lab">${lab}</span></div><div class="sk"></div><div class="sk sm"></div></div>`;
+    return `<div class="mkt-tools"><span class="lu-hint">Loading current national indicators…</span></div>
+      <div class="cards two">${sk(IC_CASH,"Refinance activity")}${sk(IC_BUILD,"New residential construction")}</div>`;
+  }
+  if(market.error) return `<div class="err"><b>Something went wrong</b>${esc(market.error)}</div>`;
+  if(!market.result) return `<div class="mkt-tools"><button class="linklike" id="mkt-load" type="button">Load snapshot</button></div>`;
+  return `<div class="mkt-tools"><button class="linklike" id="mkt-refresh" type="button">↻ Refresh</button></div>
+    <div class="cards two">${raliCard(market.result)}${constrCard(market.result)}</div>
+    <div class="support">
+      <div class="disclaimer">These are <b>national market indicators for context</b>, current as of the dates shown — <b>not a rate quote, a forecast, or advice to buy, sell, or refinance</b>.</div>
+      <div class="sources">Sources: Fannie Mae Refinance Application-Level Index and Construction Spending APIs.</div>
+    </div>`;
+}
+function raliCard(r){
+  const wk=r.rali||{}; const vi=wk["volume-index"]; const co=wk["cash-out-volume"], rt=wk["rate-term-volume"];
+  const asof=fmtIso(wk["week-ending-date"]);
+  const mix=(co!=null&&rt!=null)?(co>rt?"mostly cash-out":(rt>co?"mostly rate/term":"an even cash-out and rate/term mix")):"";
+  let trend="", interp="";
+  if(r.raliPrior && r.raliPrior["volume-index"]){
+    const pv=r.raliPrior["volume-index"], p=(vi-pv)/pv*100;
+    trend=`<div class="trend"><span class="tr-ar">${arrowOf(p)}</span> ${signPct(p)} <span class="tr-base">vs week ending ${fmtIso(r.raliPrior["week-ending-date"])}</span></div>`;
+    interp=`Refinance applications ${trendWord(p)} over the past month${mix?", "+mix+" right now":""}.`;
+  } else {
+    interp=`Refinance application index is ${vi==null?"—":vi} as of ${asof}${mix?", "+mix+" right now":""}.`;
+  }
+  return `<div class="card"><div class="c-hd">${IC_CASH}<span class="c-lab">Refinance activity</span></div>
+    <div class="c-primary">${vi==null?"—":vi}</div>
+    <div class="c-desc">Refinance application volume index (higher = more refinance applications)</div>
+    ${trend}
+    <div class="interp">${esc(interp)}</div>
+    <div class="c-ref">
+      <div class="c-ref-row"><span class="rk">Cash-out volume</span><span class="rv">${co==null?"—":co}</span></div>
+      <div class="c-ref-row"><span class="rk">Rate/term volume</span><span class="rv">${rt==null?"—":rt}</span></div>
+    </div>
+    <div class="c-src">Fannie Mae RALI · week ending ${asof}</div>
+    <details class="means"><summary>What does this mean?</summary><p>${esc(MEANS_MKT.rali)}</p></details>
+  </div>`;
+}
+function constrCard(r){
+  const c=r.constr||{}; const latest=c.latest;
+  if(!latest) return `<div class="card"><div class="c-hd">${IC_BUILD}<span class="c-lab">New residential construction</span></div>
+    <div class="c-primary" style="font-size:16px;color:var(--muted)">Unavailable</div>
+    <div class="c-desc">No residential construction figure was returned.</div></div>`;
+  let trend="", interp="";
+  if(c.mom && c.mom.val){
+    const p=(latest.val-c.mom.val)/c.mom.val*100;
+    trend=`<div class="trend"><span class="tr-ar">${arrowOf(p)}</span> ${signPct(p)} <span class="tr-base">vs ${esc(c.mom.label)}</span></div>`;
+    interp=`Residential construction spending ${trendWord(p)} versus the prior month (${bil(latest.val)} at an annual rate, ${signPct(p)} vs ${c.mom.label}).`;
+  } else {
+    interp=`Residential construction spending is ${bil(latest.val)} at an annual rate as of ${latest.label}.`;
+  }
+  const momRow = c.mom && c.mom.val ? `<div class="c-ref-row"><span class="rk">Prior month (${esc(c.mom.label)})</span><span class="rv">${bil(c.mom.val)}</span></div>` : "";
+  const yoyRow = c.yoy && c.yoy.val ? `<div class="c-ref-row"><span class="rk">Year ago (${esc(c.yoy.label)})</span><span class="rv">${bil(c.yoy.val)}</span></div>` : "";
+  return `<div class="card"><div class="c-hd">${IC_BUILD}<span class="c-lab">New residential construction</span></div>
+    <div class="c-primary">${bil(latest.val)}</div>
+    <div class="c-desc">Residential construction spending, annual rate — ${esc(latest.label)}${latest.mlabel?" ("+esc(latest.mlabel)+")":""}</div>
+    ${trend}
+    <div class="interp">${esc(interp)}</div>
+    <div class="c-ref">${momRow}${yoyRow}</div>
+    <div class="c-src">Fannie Mae Construction Spending · ${esc(latest.label)}</div>
+    <details class="means"><summary>What does this mean?</summary><p>${esc(MEANS_MKT.constr)}</p></details>
+  </div>`;
+}
+
 function render(){
   try{ document.documentElement.classList.toggle("dark", ctx().theme==="dark"); }catch{}
   document.body.classList.toggle("fs", isFs());
   document.body.classList.toggle("inline", !isFs());
   const root=document.getElementById("root");
-  root.innerHTML=(view==="snapshot")?snapshotHtml():homeHtml();
+  root.innerHTML=(view==="snapshot")?snapshotHtml():(view==="market")?marketHtml():homeHtml();
   wire(root);
 }
 function wire(root){
   wireDisplay(root);
-  root.querySelectorAll("[data-open]").forEach(b=> b.addEventListener("click",()=>{ view=b.dataset.open; result=null; error=null; lastQuery=""; showDeal=false; deal={income:"",loan:"",units:"1"}; render(); }));
+  root.querySelectorAll("[data-open]").forEach(b=> b.addEventListener("click",()=>{
+    view=b.dataset.open;
+    if(view==="market"){ if(!market.loaded && !market.loading) runMarket(); else render(); return; }
+    result=null; error=null; lastQuery=""; showDeal=false; deal={income:"",loan:"",units:"1"}; render();
+  }));
+  const mrf=root.querySelector("#mkt-refresh"); if(mrf) mrf.addEventListener("click",()=>{ market.loaded=false; runMarket(); });
+  const mld=root.querySelector("#mkt-load"); if(mld) mld.addEventListener("click",()=> runMarket());
   const oe=root.querySelector("#openexp"); if(oe) oe.addEventListener("click", async ()=>{ try{ await app.openLink({ url:DATA.explorerUrl }); }catch(e){} });
   const back=root.querySelector("#back"); if(back) back.addEventListener("click",()=>{ view="home"; render(); });
   const input=root.querySelector("#addr"), go=root.querySelector("#go");
