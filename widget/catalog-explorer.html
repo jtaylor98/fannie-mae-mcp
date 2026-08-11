@@ -160,7 +160,15 @@
   .tabpanel-empty{padding:26px 16px;color:var(--muted);font-size:12px;text-align:center}
 
   /* ---- gallery (catalog overview -- the Explorer's default front door) ---- */
-  .gv-scroll{overflow:auto;min-height:0;flex:1 1 auto;padding:2px 0 16px}
+  /* Inline: flow to natural height so the host's auto-resize sizes the iframe to
+     fit every card (like catalog.html). Fullscreen: fill the viewport + scroll
+     internally. Do NOT cap inline height with vh + overflow -- that collapses to
+     ~0 under auto-resize (no fixed viewport to resolve vh against) and the widget
+     renders blank. */
+  .gwrap{min-height:0}
+  body.fs .gwrap{height:100vh;display:flex;flex-direction:column;min-height:0}
+  .gv-scroll{padding:2px 0 16px}
+  body.fs .gv-scroll{flex:1 1 auto;min-height:0;overflow:auto}
   .gv-group{padding:4px 16px}
   .gv-group-hd{display:flex;align-items:center;gap:6px;margin:12px 0 6px}
   .gv-group-hd svg{width:13px;height:13px;color:var(--muted);flex:0 0 auto}
@@ -678,7 +686,7 @@ function render(){
   // a live/down card drills into the docked workspace for that API. Both views
   // fill the host in fullscreen and cap+scroll inline -- never a browser hop.
   if(!showWorkspace){
-    root.innerHTML = `<div class="wrap">
+    root.innerHTML = `<div class="gwrap">
       ${galleryHeaderHtml(apis)}
       <div class="gv-scroll">${galleryBodyHtml(apis)}</div>
     </div>`;
