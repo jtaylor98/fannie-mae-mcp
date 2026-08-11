@@ -166,10 +166,11 @@
   .cards.two{grid-template-columns:repeat(2,1fr)}
   @media (max-width:680px){ .cards.two{grid-template-columns:1fr} }
   .mkt-tools{display:flex;justify-content:flex-end;align-items:center;margin:2px 2px 12px;min-height:18px}
-  .interp{font-size:11.5px;color:var(--body);line-height:1.45;margin-top:10px}
+  /* business meaning leads; the index/value is the underlying measurement (subtly smaller) */
+  .mkt .interp{font-size:12px;font-weight:600;color:var(--body);line-height:1.45;margin:0 0 2px}
+  .mkt .c-primary{font-size:20px;margin-top:8px}
   .trend{display:inline-flex;align-items:center;gap:6px;margin-top:11px;font-size:11px;font-weight:700;color:var(--body);background:var(--off);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-variant-numeric:tabular-nums}
   .trend .tr-ar{font-size:9px;color:var(--muted)}
-  .trend .tr-base{font-weight:400;color:var(--muted)}
 </style>
 
 <div id="root"><div style="padding:26px 16px;color:var(--muted);text-align:center">Loading…</div></div>
@@ -244,7 +245,7 @@ const MEANS = {
 };
 
 const MEANS_MKT = {
-  rali:"Fannie Mae's Refinance Application-Level Index tracks the volume of refinance mortgage applications nationally, indexed over time and split into rate/term and cash-out. It measures refinance demand — not interest rates, approvals, or a recommendation to refinance.",
+  rali:"Fannie Mae's Refinance Application-Level Index (RALI) tracks national refinance application volume as an index relative to a baseline — not a raw count of applications. The total volume index splits into a cash-out index and a rate/term index that add up to it, showing how much refinancing is equity take-out versus rate/term. It reflects refinance demand and its mix — not interest rates, approvals, or a recommendation to refinance.",
   constr:"The dollar value of residential construction put in place across the U.S., reported at a seasonally adjusted annual rate and surfaced through Fannie Mae's Construction Spending data. It's a national supply-side gauge of building activity — not a local figure, a home price, or a forecast."
 };
 
@@ -352,9 +353,10 @@ const MKT_MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","N
 const MKT_MI={Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
 function fmtIso(iso){ const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso||"")); return m?`${MKT_MONTHS[+m[2]-1]} ${+m[3]}, ${m[1]}`:String(iso||"—"); }
 const bil=(m)=> (m==null||isNaN(m)) ? "—" : "$"+(Number(m)/1000).toLocaleString("en-US",{maximumFractionDigits:1})+"B";
-const signPct=(p)=> (p>=0?"+":"")+p.toFixed(1)+"%";
-const arrowOf=(p)=> p>0?"▲":(p<0?"▼":"■");
-function trendWord(p){ const a=Math.abs(p); if(a<0.5) return "held roughly steady"; if(a<3) return p>0?"edged up":"edged down"; return p>0?"rose":"eased"; }
+const cap=(s)=> String(s).charAt(0).toUpperCase()+String(s).slice(1);
+const chgArrow=(p)=> Math.abs(p)<0.05?"■":(p>0?"▲":"▼");
+// plain-language comparison: "2.9% lower than 4 weeks ago" / "about the same as last month"
+function chgPhrase(p, period){ const a=Math.abs(p); return a<0.05 ? `about the same as ${period}` : `${a.toFixed(1)}% ${p>0?"higher":"lower"} than ${period}`; }
 function isoMinusDays(iso,days){ const t=new Date(iso+"T00:00:00Z").getTime()-days*86400000; return new Date(t).toISOString().slice(0,10); }
 function pickWeeksAgo(rows, latestIso, days){
   if(!Array.isArray(rows)||!rows.length) return null;
@@ -564,47 +566,49 @@ function raliCard(r){
   const wk=r.rali||{}; const vi=wk["volume-index"]; const co=wk["cash-out-volume"], rt=wk["rate-term-volume"];
   const asof=fmtIso(wk["week-ending-date"]);
   const mix=(co!=null&&rt!=null)?(co>rt?"mostly cash-out":(rt>co?"mostly rate/term":"an even cash-out and rate/term mix")):"";
-  let trend="", interp="";
+  let trend="", interp="", baseNote="";
   if(r.raliPrior && r.raliPrior["volume-index"]){
     const pv=r.raliPrior["volume-index"], p=(vi-pv)/pv*100;
-    trend=`<div class="trend"><span class="tr-ar">${arrowOf(p)}</span> ${signPct(p)} <span class="tr-base">vs week ending ${fmtIso(r.raliPrior["week-ending-date"])}</span></div>`;
-    interp=`Refinance applications ${trendWord(p)} over the past month${mix?", "+mix+" right now":""}.`;
+    trend=`<div class="trend"><span class="tr-ar">${chgArrow(p)}</span> ${cap(chgPhrase(p,"4 weeks ago"))}</div>`;
+    interp=`Refinance applications are ${chgPhrase(p,"4 weeks ago")}${mix?" — currently "+mix:""}.`;
+    baseNote=`<div class="c-src">Compared with the week ending ${fmtIso(r.raliPrior["week-ending-date"])} (index ${pv})</div>`;
   } else {
-    interp=`Refinance application index is ${vi==null?"—":vi} as of ${asof}${mix?", "+mix+" right now":""}.`;
+    interp=`Refinance application index is ${vi==null?"—":vi} as of ${asof}${mix?" — currently "+mix:""}.`;
   }
-  return `<div class="card"><div class="c-hd">${IC_CASH}<span class="c-lab">Refinance activity</span></div>
-    <div class="c-primary">${vi==null?"—":vi}</div>
-    <div class="c-desc">Refinance application volume index (higher = more refinance applications)</div>
-    ${trend}
+  return `<div class="card mkt"><div class="c-hd">${IC_CASH}<span class="c-lab">Refinance activity</span></div>
     <div class="interp">${esc(interp)}</div>
+    <div class="c-primary">${vi==null?"—":vi}</div>
+    <div class="c-desc">Refinance application volume index (higher = more applications)</div>
+    ${trend}
     <div class="c-ref">
-      <div class="c-ref-row"><span class="rk">Cash-out volume</span><span class="rv">${co==null?"—":co}</span></div>
-      <div class="c-ref-row"><span class="rk">Rate/term volume</span><span class="rv">${rt==null?"—":rt}</span></div>
+      <div class="c-ref-row"><span class="rk">Cash-out index</span><span class="rv">${co==null?"—":co}</span></div>
+      <div class="c-ref-row"><span class="rk">Rate/term index</span><span class="rv">${rt==null?"—":rt}</span></div>
     </div>
+    ${baseNote}
     <div class="c-src">Fannie Mae RALI · week ending ${asof}</div>
     <details class="means"><summary>What does this mean?</summary><p>${esc(MEANS_MKT.rali)}</p></details>
   </div>`;
 }
 function constrCard(r){
   const c=r.constr||{}; const latest=c.latest;
-  if(!latest) return `<div class="card"><div class="c-hd">${IC_BUILD}<span class="c-lab">New residential construction</span></div>
+  if(!latest) return `<div class="card mkt"><div class="c-hd">${IC_BUILD}<span class="c-lab">New residential construction</span></div>
     <div class="c-primary" style="font-size:16px;color:var(--muted)">Unavailable</div>
     <div class="c-desc">No residential construction figure was returned.</div></div>`;
   let trend="", interp="";
   if(c.mom && c.mom.val){
     const p=(latest.val-c.mom.val)/c.mom.val*100;
-    trend=`<div class="trend"><span class="tr-ar">${arrowOf(p)}</span> ${signPct(p)} <span class="tr-base">vs ${esc(c.mom.label)}</span></div>`;
-    interp=`Residential construction spending ${trendWord(p)} versus the prior month (${bil(latest.val)} at an annual rate, ${signPct(p)} vs ${c.mom.label}).`;
+    trend=`<div class="trend"><span class="tr-ar">${chgArrow(p)}</span> ${cap(chgPhrase(p,"last month"))}</div>`;
+    interp=`Residential construction spending is ${chgPhrase(p,"last month")} (${bil(latest.val)} at an annual rate).`;
   } else {
     interp=`Residential construction spending is ${bil(latest.val)} at an annual rate as of ${latest.label}.`;
   }
   const momRow = c.mom && c.mom.val ? `<div class="c-ref-row"><span class="rk">Prior month (${esc(c.mom.label)})</span><span class="rv">${bil(c.mom.val)}</span></div>` : "";
   const yoyRow = c.yoy && c.yoy.val ? `<div class="c-ref-row"><span class="rk">Year ago (${esc(c.yoy.label)})</span><span class="rv">${bil(c.yoy.val)}</span></div>` : "";
-  return `<div class="card"><div class="c-hd">${IC_BUILD}<span class="c-lab">New residential construction</span></div>
+  return `<div class="card mkt"><div class="c-hd">${IC_BUILD}<span class="c-lab">New residential construction</span></div>
+    <div class="interp">${esc(interp)}</div>
     <div class="c-primary">${bil(latest.val)}</div>
     <div class="c-desc">Residential construction spending, annual rate — ${esc(latest.label)}${latest.mlabel?" ("+esc(latest.mlabel)+")":""}</div>
     ${trend}
-    <div class="interp">${esc(interp)}</div>
     <div class="c-ref">${momRow}${yoyRow}</div>
     <div class="c-src">Fannie Mae Construction Spending · ${esc(latest.label)}</div>
     <details class="means"><summary>What does this mean?</summary><p>${esc(MEANS_MKT.constr)}</p></details>
