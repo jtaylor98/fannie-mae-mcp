@@ -35,13 +35,14 @@
      (Inline stays natural-flow -- no vh caps -- so host auto-resize sizes to fit.) */
   body.fs .wrap{max-width:1040px;min-height:100vh}
 
-  /* top control row: holds the host-gated Full screen / Collapse button */
+  /* top control row: holds the host-gated Expand / Collapse button */
   .view-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
   .disp{display:inline-flex;gap:6px;flex:0 0 auto}
   .disp-btn{display:inline-flex;align-items:center;gap:6px;font-family:inherit;font-size:11px;font-weight:700;color:var(--muted);background:var(--paper);border:1px solid var(--slate);border-radius:8px;height:34px;padding:0 13px;cursor:pointer;line-height:1}
   .disp-btn:hover{color:var(--body);border-color:var(--muted)}
   .disp-btn:active{opacity:.7}
-  .disp-btn>span[aria-hidden]{font-size:12px}
+  .disp-btn>span[aria-hidden]{display:inline-flex}
+  .disp-btn>span[aria-hidden] svg{width:13px;height:13px}
 
   .kicker{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}
   .back{display:inline-flex;align-items:center;gap:5px;background:none;border:none;color:var(--muted);font-weight:700;font-size:11px;font-family:inherit;cursor:pointer;padding:0;margin-bottom:14px}
@@ -222,9 +223,11 @@ let deal={ income:"", loan:"", units:"1" };
 let loanLimitsCache=null;
 const ctx=()=>app?.getHostContext?.()||{};
 const isFs=()=> (ctx().displayMode||"inline")==="fullscreen";
-// Host-gated display-mode control (Full screen / Collapse) -- only offers a mode
+// Host-gated display-mode control (Expand / Collapse) -- only offers a mode
 // the host advertises in availableDisplayModes; toggles via requestDisplayMode({mode}).
-const DISPLAY_META={fullscreen:["⛶","Full screen"],inline:["▭","Collapse"]};
+const IC_EXPAND='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>';
+const IC_COLLAPSE='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"/></svg>';
+const DISPLAY_META={fullscreen:[IC_EXPAND,"Expand"],inline:[IC_COLLAPSE,"Collapse"]};
 function displayControlsHtml(){
   const c=ctx();
   const avail=Array.isArray(c.availableDisplayModes)?c.availableDisplayModes:[];
